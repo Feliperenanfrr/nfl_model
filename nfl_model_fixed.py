@@ -1,6 +1,8 @@
 import pandas as pd
 from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import accuracy_score
+from rich.console import Console
+from rich.table import Table
 
 def run_fixed_model():
     print("Carregando dataset...")
@@ -162,20 +164,47 @@ def run_fixed_model():
             pred_df = pred_df.sort_values(by=['Semana', 'Prob_Casa_Vencer'], ascending=[True, False])
             
             weeks = pred_df['Semana'].unique()
+            console = Console()
             
             for week in weeks:
-                print(f"\n{'='*30}")
-                print(f"SEMANA {week}")
-                print(f"{'='*30}")
-                print(f"{'Casa':<5} x {'Visitante':<5} | {'Chance Casa':<15} | {'Vencedor Previsto'}")
-                print("-" * 65)
+                table = Table(title=f"PREVISÕES - SEMANA {week}", title_style="bold magenta", row_styles=["none", "dim"])
                 
+                table.add_column("Casa", justify="right", style="cyan", no_wrap=True)
+                table.add_column("x", justify="center", style="white")
+                table.add_column("Visitante", justify="left", style="cyan", no_wrap=True)
+                table.add_column("Chance Casa", justify="center", style="green")
+                table.add_column("Odd Casa", justify="center", style="yellow")
+                table.add_column("Odd Visitante", justify="center", style="yellow")
+                table.add_column("Vencedor Previsto", justify="center", style="bold white")
+
                 week_games = pred_df[pred_df['Semana'] == week]
                 for _, row in week_games.iterrows():
-                    prob = row['Prob_Casa_Vencer']
-                    winner = row['Casa'] if prob > 0.5 else row['Visitante']
-                    confidence = prob if prob > 0.5 else 1 - prob
-                    print(f"{row['Casa']:<5} x {row['Visitante']:<5} | {prob*100:.1f}%          | {winner} ({confidence*100:.1f}%)")
+                    prob_home = row['Prob_Casa_Vencer']
+                    prob_away = 1 - prob_home
+                    
+                    # Calcular Odds Decimais
+                    odd_home = 1 / prob_home if prob_home > 0 else 999.0
+                    odd_away = 1 / prob_away if prob_away > 0 else 999.0
+                    
+                    winner = row['Casa'] if prob_home > 0.5 else row['Visitante']
+                    confidence = prob_home if prob_home > 0.5 else prob_away
+                    
+                    # Formatação condicional para probabilidade
+                    prob_style = "bold green" if prob_home > 0.6 else "green"
+                    if prob_home < 0.4: prob_style = "red"
+                    
+                    table.add_row(
+                        row['Casa'],
+                        "x",
+                        row['Visitante'],
+                        f"{prob_home*100:.1f}%",
+                        f"{odd_home:.2f}",
+                        f"{odd_away:.2f}",
+                        f"{winner} ({confidence*100:.1f}%)"
+                    )
+                
+                console.print(table)
+                console.print("\n")
 
 if __name__ == "__main__":
     run_fixed_model()
