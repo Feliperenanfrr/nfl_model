@@ -24,22 +24,29 @@ def run_backtest():
     # 1. Carregar e Preparar Dados
     try:
         df = pd.read_csv('games.csv')
+        adv_df = pd.read_csv('advanced_stats.csv')
     except FileNotFoundError:
-        console.print("[red]Erro: games.csv não encontrado.[/red]")
+        console.print("[red]Erro: games.csv ou advanced_stats.csv não encontrado.[/red]")
         return
 
     # Filtros iniciais
     df = df[df['season'] >= 2013]
     df = df[df['game_type'] == 'REG']
     
+    # Padronizar nomes dos times no games.csv para bater com nflverse (LV, LAC, LA)
+    team_map = {
+        'OAK': 'LV',
+        'SD': 'LAC',
+        'STL': 'LA'
+    }
+    df['home_team'] = df['home_team'].replace(team_map)
+    df['away_team'] = df['away_team'].replace(team_map)
+    
     # Definir vencedor
-    # Assumindo que result = home_score - away_score
-    # Se result não existe, criar
     if 'result' not in df.columns:
         df['result'] = df['home_score'] - df['away_score']
         
     df['winner'] = df['result'].apply(lambda x: 1 if x > 0 else 0)
-    # Remover empates para treino (opcional, mas o modelo original fazia isso)
     df = df[df['result'] != 0]
 
     # Feature Engineering (Global - mas com shift para evitar leakage)
@@ -52,31 +59,66 @@ def run_backtest():
     games_away['won'] = games_away['winner'].apply(lambda x: 1 if x == 0 else 0)
 
     team_stats = pd.concat([games_home, games_away], ignore_index=True)
+    
+    # Merge Advanced Stats (EPA, Success Rate)
+    # adv_df tem: game_id, season, week, team, off_epa, off_success_rate, def_epa, def_success_rate
+    # Vamos fazer merge por game_id e team
+    
+    team_stats = team_stats.merge(adv_df[['game_id', 'team', 'off_epa', 'off_success_rate', 'def_epa', 'def_success_rate']], 
+                                  on=['game_id', 'team'], how='left')
+    
     team_stats = team_stats.sort_values(by=['team', 'season', 'gameday'])
 
     window_size = 5
     # SHIFT(1) GARANTE QUE SÓ USAMOS DADOS PASSADOS
+    # Métricas Básicas
     team_stats['rolling_points_scored'] = team_stats.groupby('team')['points_scored'].transform(lambda x: x.shift(1).rolling(window=window_size).mean())
     team_stats['rolling_points_allowed'] = team_stats.groupby('team')['points_allowed'].transform(lambda x: x.shift(1).rolling(window=window_size).mean())
     team_stats['rolling_wins'] = team_stats.groupby('team')['won'].transform(lambda x: x.shift(1).rolling(window=window_size).mean())
+    
+    # Métricas Avançadas (EPA)
+    team_stats['rolling_off_epa'] = team_stats.groupby('team')['off_epa'].transform(lambda x: x.shift(1).rolling(window=window_size).mean())
+    team_stats['rolling_def_epa'] = team_stats.groupby('team')['def_epa'].transform(lambda x: x.shift(1).rolling(window=window_size).mean())
+    team_stats['rolling_off_success'] = team_stats.groupby('team')['off_success_rate'].transform(lambda x: x.shift(1).rolling(window=window_size).mean())
+    team_stats['rolling_def_success'] = team_stats.groupby('team')['def_success_rate'].transform(lambda x: x.shift(1).rolling(window=window_size).mean())
 
-    stats_to_merge = team_stats[['game_id', 'team', 'rolling_points_scored', 'rolling_points_allowed', 'rolling_wins']]
+    stats_to_merge = team_stats[['game_id', 'team', 'rolling_points_scored', 'rolling_points_allowed', 'rolling_wins',
+                                 'rolling_off_epa', 'rolling_def_epa', 'rolling_off_success', 'rolling_def_success']]
 
     df = df.merge(stats_to_merge, left_on=['game_id', 'home_team'], right_on=['game_id', 'team'], how='left')
-    df.rename(columns={'rolling_points_scored': 'home_rolling_points_scored', 'rolling_points_allowed': 'home_rolling_points_allowed', 'rolling_wins': 'home_rolling_wins'}, inplace=True)
+    df.rename(columns={
+        'rolling_points_scored': 'home_rolling_points_scored', 
+        'rolling_points_allowed': 'home_rolling_points_allowed', 
+        'rolling_wins': 'home_rolling_wins',
+        'rolling_off_epa': 'home_rolling_off_epa',
+        'rolling_def_epa': 'home_rolling_def_epa',
+        'rolling_off_success': 'home_rolling_off_success',
+        'rolling_def_success': 'home_rolling_def_success'
+    }, inplace=True)
     df.drop(columns=['team'], inplace=True)
 
     df = df.merge(stats_to_merge, left_on=['game_id', 'away_team'], right_on=['game_id', 'team'], how='left')
-    df.rename(columns={'rolling_points_scored': 'away_rolling_points_scored', 'rolling_points_allowed': 'away_rolling_points_allowed', 'rolling_wins': 'away_rolling_wins'}, inplace=True)
+    df.rename(columns={
+        'rolling_points_scored': 'away_rolling_points_scored', 
+        'rolling_points_allowed': 'away_rolling_points_allowed', 
+        'rolling_wins': 'away_rolling_wins',
+        'rolling_off_epa': 'away_rolling_off_epa',
+        'rolling_def_epa': 'away_rolling_def_epa',
+        'rolling_off_success': 'away_rolling_off_success',
+        'rolling_def_success': 'away_rolling_def_success'
+    }, inplace=True)
     df.drop(columns=['team'], inplace=True)
 
     # Remover jogos sem histórico suficiente
-    df_clean = df.dropna(subset=['home_rolling_points_scored', 'away_rolling_points_scored'])
+    # Agora precisamos garantir que temos EPA também
+    df_clean = df.dropna(subset=['home_rolling_off_epa', 'away_rolling_off_epa'])
 
-    # Features
+    # Features (Adicionando as novas)
     features = [
         'home_rolling_points_scored', 'home_rolling_points_allowed', 'home_rolling_wins', 'home_rest',
-        'away_rolling_points_scored', 'away_rolling_points_allowed', 'away_rolling_wins', 'away_rest'
+        'away_rolling_points_scored', 'away_rolling_points_allowed', 'away_rolling_wins', 'away_rest',
+        'home_rolling_off_epa', 'home_rolling_def_epa', 'home_rolling_off_success', 'home_rolling_def_success',
+        'away_rolling_off_epa', 'away_rolling_def_epa', 'away_rolling_off_success', 'away_rolling_def_success'
     ]
 
     # --- LOOP DE BACKTEST ---
