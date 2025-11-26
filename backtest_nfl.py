@@ -120,45 +120,107 @@ def run_backtest():
             current_games = df_clean[test_mask].copy()
             current_games['prob_home'] = probs
             
+            # Avaliar Apostas com Estratégia "Sinal Verde/Vermelho"
+            current_games = df_clean[test_mask].copy()
+            current_games['prob_home'] = probs
+            
             for idx, row in current_games.iterrows():
-                # Estratégia: Apostar no favorito do modelo (> 0.5)
-                # Unidade: 1
-                
-                bet_on_home = row['prob_home'] > 0.5
-                actual_winner_home = row['winner'] == 1
-                
-                # Verificar Odds
-                # Se odds não existirem, assumir -110 (1.909) padrão ou pular?
-                # Vamos tentar usar as colunas de moneyline se existirem
                 home_ml = row.get('home_moneyline', float('nan'))
                 away_ml = row.get('away_moneyline', float('nan'))
                 
-                if pd.isna(home_ml) or pd.isna(away_ml):
-                    # Fallback ou Skip? Vamos contar como vitória simples sem lucro financeiro preciso, 
-                    # ou assumir odd 1.90 (-110) para estimativa.
-                    # O usuário pediu "quantas unidades", o que implica odds.
-                    # Vou assumir odd 1.909 (-110) se nulo para não zerar o lucro, mas avisar.
-                    odds = -110
-                else:
-                    odds = home_ml if bet_on_home else away_ml
+                # Spread Logic: 'spread_line' is AWAY SPREAD
+                away_spread_line = row.get('spread_line', float('nan'))
+                home_spread_line = -away_spread_line if not pd.isna(away_spread_line) else float('nan')
                 
-                won_bet = (bet_on_home == actual_winner_home)
+                home_spread_odds = row.get('home_spread_odds', -110)
+                away_spread_odds = row.get('away_spread_odds', -110)
+                if pd.isna(home_spread_odds): home_spread_odds = -110
+                if pd.isna(away_spread_odds): away_spread_odds = -110
+
+                # Probabilidades do Modelo
+                prob_home = row['prob_home']
+                prob_away = 1 - prob_home
                 
-                profit = 0
-                if won_bet:
-                    profit = calculate_payout(odds, wager=1)
-                else:
-                    profit = -1
+                bet_type = None # 'ML_HOME', 'ML_AWAY', 'SPREAD_HOME', 'SPREAD_AWAY'
+                bet_team = None
+                odds_taken = 0
                 
-                results.append({
-                    'season': season,
-                    'week': week,
-                    'game_id': row['game_id'],
-                    'bet_on': row['home_team'] if bet_on_home else row['away_team'],
-                    'won_bet': won_bet,
-                    'odds': odds,
-                    'profit': profit
-                })
+                # --- LÓGICA DE SINAIS ---
+                
+                # 1. SINAL VERDE (Apostas de Valor em Favoritos)
+                # Critério: Modelo confiante (>60%) e Odds justas (>1.60)
+                if prob_home > 0.60 and home_ml > -167: 
+                    dec_home = (100 / abs(home_ml) + 1) if home_ml < 0 else (home_ml / 100 + 1)
+                    if dec_home >= 1.60:
+                        bet_type = 'ML_HOME'
+                        bet_team = row['home_team']
+                        odds_taken = home_ml
+                
+                elif prob_away > 0.60:
+                    dec_away = (100 / abs(away_ml) + 1) if away_ml < 0 else (away_ml / 100 + 1)
+                    if dec_away >= 1.60:
+                        bet_type = 'ML_AWAY'
+                        bet_team = row['away_team']
+                        odds_taken = away_ml
+
+                # 2. SINAL VERMELHO (Armadilhas - Apostar CONTRA Favoritos Públicos)
+                # Critério: Favorito com Odd Esmagada (<1.50) mas Modelo não ama (<65%)
+                # Ação: Apostar no Handicap do Azarão
+                
+                if bet_type is None: # Só avaliar se não tiver Green Signal
+                    # Check Home Favorite Trap
+                    dec_home = (100 / abs(home_ml) + 1) if home_ml < 0 else (home_ml / 100 + 1)
+                    if dec_home < 1.50 and prob_home < 0.65:
+                        # Home é favorito "falso". Apostar Away Spread.
+                        if not pd.isna(away_spread_line):
+                            bet_type = 'SPREAD_AWAY'
+                            bet_team = row['away_team']
+                            odds_taken = away_spread_odds
+                    
+                    # Check Away Favorite Trap
+                    dec_away = (100 / abs(away_ml) + 1) if away_ml < 0 else (away_ml / 100 + 1)
+                    if dec_away < 1.50 and prob_away < 0.65:
+                        # Away é favorito "falso". Apostar Home Spread.
+                        if not pd.isna(home_spread_line):
+                            bet_type = 'SPREAD_HOME'
+                            bet_team = row['home_team']
+                            odds_taken = home_spread_odds
+
+                # --- EXECUTAR APOSTA ---
+                if bet_type:
+                    profit = 0
+                    won_bet = False
+                    
+                    # Verificar Resultado
+                    home_score = row['home_score']
+                    away_score = row['away_score']
+                    
+                    if bet_type == 'ML_HOME':
+                        won_bet = home_score > away_score
+                    elif bet_type == 'ML_AWAY':
+                        won_bet = away_score > home_score
+                    elif bet_type == 'SPREAD_HOME':
+                        # Home ganha spread se (H - A) + Spread > 0
+                        won_bet = (home_score - away_score + home_spread_line) > 0
+                    elif bet_type == 'SPREAD_AWAY':
+                        # Away ganha spread se (A - H) + Spread > 0
+                        won_bet = (away_score - home_score + away_spread_line) > 0
+                        
+                    if won_bet:
+                        profit = calculate_payout(odds_taken, wager=1)
+                    else:
+                        profit = -1
+                    
+                    results.append({
+                        'season': season,
+                        'week': week,
+                        'game_id': row['game_id'],
+                        'bet_type': bet_type,
+                        'bet_on': bet_team,
+                        'won_bet': won_bet,
+                        'odds': odds_taken,
+                        'profit': profit
+                    })
             
             # print(f"Processada Temporada {season} Semana {week} - Jogos: {len(current_games)}")
 
