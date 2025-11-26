@@ -1,28 +1,44 @@
 import pandas as pd
 from sklearn.linear_model import LogisticRegression
-from sklearn.metrics import accuracy_score
 from rich.console import Console
 from rich.table import Table
 
-def run_fixed_model():
-    print("Carregando dataset...")
+def calculate_payout(odds, wager=1):
+    if pd.isna(odds): return 0
+    if odds > 0: return wager * (odds / 100)
+    else: return wager * (100 / abs(odds))
+
+def run_prediction():
+    console = Console()
+    console.print("[bold green]Gerando Previsões Avançadas - Semana 13 (2025)...[/bold green]")
+
+    # 1. Carregar Dados
     try:
         df = pd.read_csv('games.csv')
+        adv_df = pd.read_csv('advanced_stats.csv')
     except FileNotFoundError:
-        print("Erro: games.csv não encontrado.")
+        console.print("[red]Erro: Arquivos de dados não encontrados.[/red]")
         return
 
-    # Filtrar temporadas a partir de 2013 e jogos da temporada regular
+    # Filtros e Padronização
     df = df[df['season'] >= 2013]
     df = df[df['game_type'] == 'REG']
-
-    # Definir o vencedor (1 se o time da casa vencer, 0 se o time visitante vencer)
+    
+    team_map = {'OAK': 'LV', 'SD': 'LAC', 'STL': 'LA'}
+    df['home_team'] = df['home_team'].replace(team_map)
+    df['away_team'] = df['away_team'].replace(team_map)
+    
+    if 'result' not in df.columns:
+        df['result'] = df['home_score'] - df['away_score']
+    
     df['winner'] = df['result'].apply(lambda x: 1 if x > 0 else 0)
-    df = df[df['result'] != 0]
+    
+    # Separar dados para treino (Jogos já ocorridos)
+    # Assumindo que jogos sem resultado (NaN) ou da semana alvo são para prever
+    # Mas para treinar, precisamos de jogos COM resultado.
+    df_train_base = df[df['result'] != 0].copy()
 
-    print("Realizando Feature Engineering (com correção de vazamento)...")
-
-    # 1. Criar um DataFrame unificado por time
+    # Feature Engineering Global
     games_home = df[['game_id', 'season', 'week', 'gameday', 'home_team', 'home_score', 'away_score', 'winner', 'home_rest']].copy()
     games_home.rename(columns={'home_team': 'team', 'home_score': 'points_scored', 'away_score': 'points_allowed', 'home_rest': 'rest'}, inplace=True)
     games_home['won'] = games_home['winner']
@@ -32,179 +48,211 @@ def run_fixed_model():
     games_away['won'] = games_away['winner'].apply(lambda x: 1 if x == 0 else 0)
 
     team_stats = pd.concat([games_home, games_away], ignore_index=True)
+    
+    # Merge Advanced Stats
+    team_stats = team_stats.merge(adv_df[['game_id', 'team', 'off_epa', 'off_success_rate', 'def_epa', 'def_success_rate']], 
+                                  on=['game_id', 'team'], how='left')
+    
     team_stats = team_stats.sort_values(by=['team', 'season', 'gameday'])
 
-    # 2. Calcular médias móveis (Rolling Averages) com SHIFT
     window_size = 5
+    # Rolling Stats
+    cols_to_roll = {
+        'points_scored': 'rolling_points_scored',
+        'points_allowed': 'rolling_points_allowed',
+        'won': 'rolling_wins',
+        'off_epa': 'rolling_off_epa',
+        'def_epa': 'rolling_def_epa',
+        'off_success_rate': 'rolling_off_success',
+        'def_success_rate': 'rolling_def_success'
+    }
     
-    # Agrupar por time e calcular média móvel das estatísticas
-    # O .shift(1) é CRUCIAL: garante que usamos apenas dados dos jogos ANTERIORES
-    team_stats['rolling_points_scored'] = team_stats.groupby('team')['points_scored'].transform(lambda x: x.shift(1).rolling(window=window_size).mean())
-    team_stats['rolling_points_allowed'] = team_stats.groupby('team')['points_allowed'].transform(lambda x: x.shift(1).rolling(window=window_size).mean())
-    team_stats['rolling_wins'] = team_stats.groupby('team')['won'].transform(lambda x: x.shift(1).rolling(window=window_size).mean())
+    for col, new_col in cols_to_roll.items():
+        team_stats[new_col] = team_stats.groupby('team')[col].transform(lambda x: x.shift(1).rolling(window=window_size).mean())
 
-    # 3. Juntar as estatísticas de volta ao DataFrame original
-    stats_to_merge = team_stats[['game_id', 'team', 'rolling_points_scored', 'rolling_points_allowed', 'rolling_wins']]
+    stats_to_merge = team_stats[['game_id', 'team'] + list(cols_to_roll.values())]
 
-    # Merge para time da casa
+    # Merge back to main df
     df = df.merge(stats_to_merge, left_on=['game_id', 'home_team'], right_on=['game_id', 'team'], how='left')
-    df.rename(columns={
-        'rolling_points_scored': 'home_rolling_points_scored',
-        'rolling_points_allowed': 'home_rolling_points_allowed',
-        'rolling_wins': 'home_rolling_wins'
-    }, inplace=True)
+    for col in cols_to_roll.values():
+        df.rename(columns={col: f"home_{col}"}, inplace=True)
     df.drop(columns=['team'], inplace=True)
 
-    # Merge para time visitante
     df = df.merge(stats_to_merge, left_on=['game_id', 'away_team'], right_on=['game_id', 'team'], how='left')
-    df.rename(columns={
-        'rolling_points_scored': 'away_rolling_points_scored',
-        'rolling_points_allowed': 'away_rolling_points_allowed',
-        'rolling_wins': 'away_rolling_wins'
-    }, inplace=True)
+    for col in cols_to_roll.values():
+        df.rename(columns={col: f"away_{col}"}, inplace=True)
     df.drop(columns=['team'], inplace=True)
 
-    # Remover jogos sem histórico suficiente (NaNs gerados pelo rolling)
-    df_clean = df.dropna(subset=['home_rolling_points_scored', 'away_rolling_points_scored'])
-    
-    print(f"Jogos originais: {len(df)}, Jogos após limpeza de histórico: {len(df_clean)}")
-
-    # Selecionar features
-    parametros = [
+    # Features
+    features = [
         'home_rolling_points_scored', 'home_rolling_points_allowed', 'home_rolling_wins', 'home_rest',
-        'away_rolling_points_scored', 'away_rolling_points_allowed', 'away_rolling_wins', 'away_rest'
+        'away_rolling_points_scored', 'away_rolling_points_allowed', 'away_rolling_wins', 'away_rest',
+        'home_rolling_off_epa', 'home_rolling_def_epa', 'home_rolling_off_success', 'home_rolling_def_success',
+        'away_rolling_off_epa', 'away_rolling_def_epa', 'away_rolling_off_success', 'away_rolling_def_success'
     ]
 
-    # Dividir em treino e teste
-    df_train = df_clean[df_clean['season'] < 2023]
-    df_test = df_clean[df_clean['season'] >= 2023]
-
-    X_train = df_train[parametros]
-    y_train = df_train['winner']
-    X_test = df_test[parametros]
-    y_test = df_test['winner']
-
-    print(f"Treinando modelo com {len(X_train)} jogos...")
-    modelo = LogisticRegression(max_iter=1000)
-    modelo.fit(X_train, y_train)
-
-    print("Fazendo previsões...")
-    y_pred = modelo.predict(X_test)
-
-    acuracia = accuracy_score(y_test, y_pred)
-    print("-" * 30)
-    print(f"Acurácia do Modelo Corrigido: {acuracia * 100:.2f}%")
-    print("-" * 30)
+    # Preparar Treino (Tudo antes da Semana 13 de 2025)
+    # Nota: df_train_base era só para garantir result != 0, mas agora precisamos das features calculadas em 'df'
     
-    # Mostrar coeficientes para entender o que o modelo aprendeu
-    coef_df = pd.DataFrame({'Feature': parametros, 'Coefficient': modelo.coef_[0]})
-    print("\nImportância das Features (Coeficientes):")
-    print(coef_df.sort_values(by='Coefficient', ascending=False))
-
-    # --- PREVISÃO DE JOGOS FUTUROS ---
-    print("\n" + "="*30)
-    print("PREVISÃO DE JOGOS FUTUROS (Próxima Semana)")
-    print("="*30)
-
-    # Identificar jogos futuros (sem resultado)
-    # Nota: O dataset original 'df' tem todos os jogos. 'df_clean' removeu os sem histórico.
-    # Precisamos pegar os jogos futuros do 'df' original e buscar as estatísticas mais recentes dos times.
+    df_clean = df.dropna(subset=['home_rolling_off_epa', 'away_rolling_off_epa'])
     
-    future_games = df[df['result'].isna()].copy()
+    TARGET_SEASON = 2025
+    TARGET_WEEK = 13
     
-    if future_games.empty:
-        print("Não foram encontrados jogos futuros (sem resultado) no dataset.")
-    else:
-        # Para prever, precisamos das estatísticas MAIS RECENTES de cada time
-        # Vamos criar um dicionário com a última linha de estatísticas de cada time
-        latest_stats = team_stats.groupby('team').last()[['rolling_points_scored', 'rolling_points_allowed', 'rolling_wins']]
-        
-        print(f"Encontrados {len(future_games)} jogos para prever.\n")
-        
-        predictions = []
-        
-        for index, row in future_games.iterrows():
-            home_team = row['home_team']
-            away_team = row['away_team']
-            
-            # Buscar stats recentes
-            if home_team in latest_stats.index and away_team in latest_stats.index:
-                home_stats = latest_stats.loc[home_team]
-                away_stats = latest_stats.loc[away_team]
-                
-                # Montar vetor de features para o jogo
-                # Nota: Usamos o 'rest' do próprio agendamento do jogo futuro
-                features = pd.DataFrame([{
-                    'home_rolling_points_scored': home_stats['rolling_points_scored'],
-                    'home_rolling_points_allowed': home_stats['rolling_points_allowed'],
-                    'home_rolling_wins': home_stats['rolling_wins'],
-                    'home_rest': row['home_rest'] if pd.notna(row['home_rest']) else 7, # Default 7 se nulo
-                    'away_rolling_points_scored': away_stats['rolling_points_scored'],
-                    'away_rolling_points_allowed': away_stats['rolling_points_allowed'],
-                    'away_rolling_wins': away_stats['rolling_wins'],
-                    'away_rest': row['away_rest'] if pd.notna(row['away_rest']) else 7
-                }])
-                
-                # Prever probabilidade
-                prob_home_win = modelo.predict_proba(features)[0][1]
-                
-                predictions.append({
-                    'Semana': row['week'],
-                    'Casa': home_team,
-                    'Visitante': away_team,
-                    'Prob_Casa_Vencer': prob_home_win
-                })
-            else:
-                print(f"Aviso: Sem dados históricos suficientes para {home_team} ou {away_team}")
+    train_mask = (df_clean['season'] < TARGET_SEASON) | ((df_clean['season'] == TARGET_SEASON) & (df_clean['week'] < TARGET_WEEK))
+    target_mask = (df_clean['season'] == TARGET_SEASON) & (df_clean['week'] == TARGET_WEEK)
+    
+    X_train = df_clean[train_mask][features]
+    y_train = df_clean[train_mask]['winner']
+    
+    games_to_predict = df_clean[target_mask].copy()
+    
+    if games_to_predict.empty:
+        console.print(f"[yellow]Nenhum jogo encontrado para a Semana {TARGET_WEEK} de {TARGET_SEASON} com dados suficientes.[/yellow]")
+        # Tentar pegar do df original (talvez não tenha resultado ainda, o que é esperado para previsão)
+        # Mas precisamos que tenha as rolling stats (que dependem de jogos passados).
+        # Se for a semana atual, os jogos passados existem.
+        return
 
-        # Exibir previsões agrupadas por semana
-        if predictions:
-            pred_df = pd.DataFrame(predictions)
-            # Ordenar por Semana e depois por Probabilidade (decrescente)
-            pred_df = pred_df.sort_values(by=['Semana', 'Prob_Casa_Vencer'], ascending=[True, False])
+    console.print(f"Treinando com {len(X_train)} jogos históricos...")
+    model = LogisticRegression(max_iter=1000)
+    model.fit(X_train, y_train)
+    
+    console.print(f"Prevendo {len(games_to_predict)} jogos para a Semana {TARGET_WEEK}...")
+    
+    probs = model.predict_proba(games_to_predict[features])[:, 1]
+    games_to_predict['prob_home'] = probs
+    
+    # Gerar Relatório Rico (Formato "Cartão de Apostas do Especialista")
+    
+    green_bets = []
+    yellow_bets = []
+    red_bets = [] # Avoid list
+    
+    for idx, row in games_to_predict.iterrows():
+        home = row['home_team']
+        away = row['away_team']
+        prob_home = row['prob_home']
+        prob_away = 1 - prob_home
+        
+        home_ml = row.get('home_moneyline', float('nan'))
+        away_ml = row.get('away_moneyline', float('nan'))
+        spread = row.get('spread_line', float('nan')) # Away Spread usually
+        
+        # Calcular Odds Decimais
+        dec_home = (100 / abs(home_ml) + 1) if home_ml < 0 else (home_ml / 100 + 1)
+        dec_away = (100 / abs(away_ml) + 1) if away_ml < 0 else (away_ml / 100 + 1)
+        
+        # --- LÓGICA DE CLASSIFICAÇÃO ---
+        
+        # 1. SINAL VERDE (Alta Confiança + Valor)
+        # Favorito Sólido ou Underdog com Spread Seguro
+        if prob_home > 0.60 and dec_home >= 1.60:
+            green_bets.append({
+                'Jogo': f"**{home} @ {away}**",
+                'Aposta': f"**{home} ML**",
+                'Odd': f"**{dec_home:.2f}**",
+                'Unidades': "**2u**",
+                'Racional': f"**A Melhor da Semana.** O modelo vê {prob_home:.0%} de chance para {home}. Odd de valor."
+            })
+        elif prob_away > 0.60 and dec_away >= 1.60:
+            green_bets.append({
+                'Jogo': f"**{home} @ {away}**",
+                'Aposta': f"**{away} ML**",
+                'Odd': f"**{dec_away:.2f}**",
+                'Unidades': "**2u**",
+                'Racional': f"**A Melhor da Semana.** O modelo vê {prob_away:.0%} de chance para {away}. Odd de valor."
+            })
             
-            weeks = pred_df['Semana'].unique()
-            console = Console()
-            
-            for week in weeks:
-                table = Table(title=f"PREVISÕES - SEMANA {week}", title_style="bold magenta", row_styles=["none", "dim"])
-                
-                table.add_column("Casa", justify="right", style="cyan", no_wrap=True)
-                table.add_column("x", justify="center", style="white")
-                table.add_column("Visitante", justify="left", style="cyan", no_wrap=True)
-                table.add_column("Chance Casa", justify="center", style="green")
-                table.add_column("Odd Casa", justify="center", style="yellow")
-                table.add_column("Odd Visitante", justify="center", style="yellow")
-                table.add_column("Vencedor Previsto", justify="center", style="bold white")
+        # 2. SINAL AMARELO (Risco/Retorno ou Spread de Proteção)
+        # Zebras Matemáticas ou Spreads contra Favoritos Públicos
+        
+        # Spread Away (Apostar no Visitante +Pontos)
+        # Se Home é favorito fraco (Odd < 1.50 mas Prob < 65%)
+        if dec_home < 1.50 and prob_home < 0.65:
+            # Isso é uma armadilha no favorito, então é valor no spread do azarão
+            line = spread if not pd.isna(spread) else "+3.5" # Default se faltar
+            yellow_bets.append({
+                'Jogo': f"**{home} @ {away}**",
+                'Aposta': f"**{away} {line}**",
+                'Odd': "**1.90**",
+                'Unidades': "**1u**",
+                'Racional': f"**Proteção contra Exagero.** {home} é favorito, mas não por tanto. {away} cobre o spread."
+            })
+            # Adicionar o favorito na lista vermelha
+            red_bets.append(f"❌ **Apostar no {home} ({dec_home:.2f}):** Odd esmagada. Risco alto de jogo apertado.")
 
-                week_games = pred_df[pred_df['Semana'] == week]
-                for _, row in week_games.iterrows():
-                    prob_home = row['Prob_Casa_Vencer']
-                    prob_away = 1 - prob_home
-                    
-                    # Calcular Odds Decimais
-                    odd_home = 1 / prob_home if prob_home > 0 else 999.0
-                    odd_away = 1 / prob_away if prob_away > 0 else 999.0
-                    
-                    winner = row['Casa'] if prob_home > 0.5 else row['Visitante']
-                    confidence = prob_home if prob_home > 0.5 else prob_away
-                    
-                    # Formatação condicional para probabilidade
-                    prob_style = "bold green" if prob_home > 0.6 else "green"
-                    if prob_home < 0.4: prob_style = "red"
-                    
-                    table.add_row(
-                        row['Casa'],
-                        "x",
-                        row['Visitante'],
-                        f"{prob_home*100:.1f}%",
-                        f"{odd_home:.2f}",
-                        f"{odd_away:.2f}",
-                        f"{winner} ({confidence*100:.1f}%)"
-                    )
-                
-                console.print(table)
-                console.print("\n")
+        # Spread Home (Apostar na Casa +Pontos)
+        if dec_away < 1.50 and prob_away < 0.65:
+            line = -spread if not pd.isna(spread) else "+3.5"
+            line_str = f"+{line}" if line > 0 else f"{line}"
+            yellow_bets.append({
+                'Jogo': f"**{home} @ {away}**",
+                'Aposta': f"**{home} {line_str}**",
+                'Odd': "**1.90**",
+                'Unidades': "**1u**",
+                'Racional': f"**Aposta no Erro de Precificação.** O mercado ama {away}, mas o modelo vê jogo parelho."
+            })
+            red_bets.append(f"❌ **Apostar no {away} ({dec_away:.2f}):** Valor negativo. O modelo vê o jogo muito mais parelho.")
+
+        # Zebras Puras (Odd > 2.20 e Prob > 40%)
+        if dec_home > 2.20 and prob_home > 0.40:
+            yellow_bets.append({
+                'Jogo': f"**{home} @ {away}**",
+                'Aposta': f"**{home} ML**",
+                'Odd': f"**{dec_home:.2f}**",
+                'Unidades': "**0.5u**",
+                'Racional': f"**Loteria Matemática.** Chance real de {prob_home:.0%}. Paga muito bem pelo risco."
+            })
+        elif dec_away > 2.20 and prob_away > 0.40:
+            yellow_bets.append({
+                'Jogo': f"**{home} @ {away}**",
+                'Aposta': f"**{away} ML**",
+                'Odd': f"**{dec_away:.2f}**",
+                'Unidades': "**0.5u**",
+                'Racional': f"**Loteria Matemática.** Chance real de {prob_away:.0%}. Paga muito bem pelo risco."
+            })
+
+    # Salvar Relatório Markdown
+    with open('RELATORIO_APOSTAS_SEMANA_13.md', 'w', encoding='utf-8') as f:
+        f.write("# 🃏 Cartão de Apostas do Especialista: Semana 13\n\n")
+        f.write("Este arquivo contém as recomendações finais baseadas na análise do modelo vs casas de apostas.\n\n")
+        
+        f.write("## 💰 A Regra de Ouro (Gestão de Banca)\n")
+        f.write("*   **Unidade (1u):** O valor padrão da sua aposta (ex: R$ 50,00).\n")
+        f.write("*   **Não persiga perdas.** Se o dia for ruim, aceite. O lucro vem no longo prazo.\n\n")
+        f.write("---\n\n")
+        
+        f.write("## 🟢 SINAL VERDE: Apostas de Valor (Fazer)\n")
+        f.write("*Entradas onde a matemática e o contexto se alinham. Alta confiança no Valor Esperado (+EV).*\n\n")
+        f.write("| Jogo | Aposta | Odd | Unidades | Racional do Especialista |\n")
+        f.write("| :--- | :--- | :--- | :--- | :--- |\n")
+        for bet in green_bets:
+            f.write(f"| {bet['Jogo']} | {bet['Aposta']} | {bet['Odd']} | {bet['Unidades']} | {bet['Racional']} |\n")
+        
+        f.write("\n---\n\n")
+        
+        f.write("## 🟡 SINAL AMARELO: Apostas de Risco/Retorno (Pequenas)\n")
+        f.write("*Entradas para buscar lucro alto com investimento baixo. Zebras matemáticas.*\n\n")
+        f.write("| Jogo | Aposta | Odd | Unidades | Racional do Especialista |\n")
+        f.write("| :--- | :--- | :--- | :--- | :--- |\n")
+        for bet in yellow_bets:
+            f.write(f"| {bet['Jogo']} | {bet['Aposta']} | {bet['Odd']} | {bet['Unidades']} | {bet['Racional']} |\n")
+
+        f.write("\n---\n\n")
+        
+        f.write("## 🔴 SINAL VERMELHO: Armadilhas (EVITAR)\n")
+        f.write("*Jogos onde você vai perder dinheiro a longo prazo, mesmo que ganhe hoje.*\n\n")
+        for bet in red_bets:
+            f.write(f"*   {bet}\n")
+            
+        f.write("\n---\n\n")
+        f.write("## 🧠 Resumo da Estratégia\n")
+        f.write("1.  **Foco:** Apostar contra os \"Favoritos Públicos\" usando **Handicaps** nos oponentes.\n")
+        f.write("2.  **Segurança:** Confiar nas apostas de Sinal Verde.\n")
+        f.write("3.  **Longo Prazo:** Aceitar a variância das zebras (Sinal Amarelo).\n")
+
+    console.print("[bold green]Relatório 'Cartão de Apostas' gerado com sucesso![/bold green]")
 
 if __name__ == "__main__":
-    run_fixed_model()
+    run_prediction()

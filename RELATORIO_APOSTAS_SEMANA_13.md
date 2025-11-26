@@ -13,9 +13,7 @@ Este arquivo contém as recomendações finais baseadas na análise do modelo vs
 
 | Jogo | Aposta | Odd | Unidades | Racional do Especialista |
 | :--- | :--- | :--- | :--- | :--- |
-| **DET @ GB** | **DET Lions ML** | **1.66** | **2u** | **A Melhor da Semana.** O único favorito que o modelo ama. Detroit é um time sólido, e a odd 1.66 é justa. O modelo vê 64% de chance. |
-| **DAL @ KC** | **DAL Cowboys +3.5** | **1.90** | **1.5u** | **Aposta no Erro de Precificação.** O mercado ama o Chiefs, mas eles ganham apertado. O modelo diz que Dallas pode até ganhar. Pegar o Handicap (+3.5) é muito seguro. |
-| **CHI @ PHI** | **CHI Bears +7.0** | **1.86** | **1u** | **Proteção contra Exagero.** Eagles são favoritos, mas não por tanto. Chicago tem defesa para manter o jogo próximo. Ganhar 7 pontos de vantagem é luxo. |
+| **DET @ GB** | **DET ML** | **1.70** | **2u** | **A Melhor da Semana.** O modelo vê 63% de chance para DET. Odd de valor. |
 
 ---
 
@@ -24,22 +22,26 @@ Este arquivo contém as recomendações finais baseadas na análise do modelo vs
 
 | Jogo | Aposta | Odd | Unidades | Racional do Especialista |
 | :--- | :--- | :--- | :--- | :--- |
-| **LV @ LAC** | **LV Raiders ML** | **5.00** | **0.5u** | **Loteria Matemática.** A chance real é 30%, não 20%. A longo prazo, apostar em zebras de 5.00 que deveriam ser 3.00 imprime dinheiro. Mas esteja pronto para perder. |
-| **CLE @ SF** | **CLE Browns +5.0** | **1.90** | **1u** | O 49ers é superestimado pelo público. Browns tem defesa para cobrir esse spread. |
-| **ARI @ TB** | **ARI Cardinals ML** | **2.40** | **0.75u** | Jogo de "moeda" (50/50). Se a casa paga 2.40 numa moeda, você aposta. |
+| **DAL @ KC** | **DAL ML** | **2.54** | **0.5u** | **Loteria Matemática.** Chance real de 56%. Paga muito bem pelo risco. |
+| **PHI @ CHI** | **CHI 7.0** | **1.90** | **1u** | **Proteção contra Exagero.** PHI é favorito, mas não por tanto. CHI cobre o spread. |
+| **CLE @ SF** | **CLE +4.5** | **1.90** | **1u** | **Aposta no Erro de Precificação.** O mercado ama SF, mas o modelo vê jogo parelho. |
+| **CLE @ SF** | **CLE ML** | **3.00** | **0.5u** | **Loteria Matemática.** Chance real de 40%. Paga muito bem pelo risco. |
+| **IND @ HOU** | **HOU 4.5** | **1.90** | **1u** | **Proteção contra Exagero.** IND é favorito, mas não por tanto. HOU cobre o spread. |
+| **TB @ ARI** | **ARI ML** | **2.30** | **0.5u** | **Loteria Matemática.** Chance real de 52%. Paga muito bem pelo risco. |
+| **PIT @ BUF** | **PIT ML** | **2.54** | **0.5u** | **Loteria Matemática.** Chance real de 41%. Paga muito bem pelo risco. |
 
 ---
 
 ## 🔴 SINAL VERMELHO: Armadilhas (EVITAR)
 *Jogos onde você vai perder dinheiro a longo prazo, mesmo que ganhe hoje.*
 
-*   ❌ **Apostar no Kansas City Chiefs (1.55):** Odd esmagada. Risco alto de jogo apertado. Não paga o risco cardíaco.
-*   ❌ **Apostar no SF 49ers (1.40):** O modelo vê o jogo muito mais parelho. Valor negativo.
-*   ❌ **Apostar no Baltimore Ravens (1.31):** Odd de favorito massivo em jogo de divisão contra Joe Burrow? Loucura. Pule.
+*   ❌ **Apostar no PHI (1.31):** Odd esmagada. Risco alto de jogo apertado.
+*   ❌ **Apostar no SF (1.41):** Valor negativo. O modelo vê o jogo muito mais parelho.
+*   ❌ **Apostar no IND (1.44):** Odd esmagada. Risco alto de jogo apertado.
 
 ---
 
 ## 🧠 Resumo da Estratégia
-1.  **Foco:** Apostar contra os "Favoritos Públicos" (Chiefs, Eagles, 49ers) usando **Handicaps** nos oponentes.
-2.  **Segurança:** Confiar no Detroit Lions.
-3.  **Longo Prazo:** Aceitar que vamos perder algumas zebras, mas quando acertarmos (como Raiders ou Cowboys), o lucro cobrirá as perdas.
+1.  **Foco:** Apostar contra os "Favoritos Públicos" usando **Handicaps** nos oponentes.
+2.  **Segurança:** Confiar nas apostas de Sinal Verde.
+3.  **Longo Prazo:** Aceitar a variância das zebras (Sinal Amarelo).
