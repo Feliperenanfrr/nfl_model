@@ -7,6 +7,9 @@ import glob
 import os
 import numpy as np
 import traceback
+from sklearn.cluster import KMeans
+from sklearn.preprocessing import StandardScaler
+from scipy import stats
 
 # Set style for static plots
 sns.set_theme(style="whitegrid", context="talk", palette="viridis")
@@ -17,7 +20,8 @@ def process_player_stats(stats_df):
     """Aggregates player stats by player_id."""
     print("  Processando estatísticas dos jogadores...")
     # Convert EPA columns to numeric, forcing errors to NaN
-    cols_to_numeric = ['passing_epa', 'rushing_epa', 'receiving_epa', 'fantasy_points']
+    cols_to_numeric = ['passing_epa', 'rushing_epa', 'receiving_epa', 'fantasy_points', 
+                       'sacks_suffered', 'carries', 'receiving_tds', 'completions', 'attempts']
     for col in cols_to_numeric:
         if col in stats_df.columns:
             stats_df[col] = pd.to_numeric(stats_df[col], errors='coerce')
@@ -29,22 +33,36 @@ def process_player_stats(stats_df):
     stats_df['total_epa'] = stats_df['passing_epa'] + stats_df['rushing_epa'] + stats_df['receiving_epa']
     
     # Aggregate by player
-    if 'player_name' not in stats_df.columns:
+    if 'player_display_name' in stats_df.columns:
+        name_col = 'player_display_name'
+    elif 'player_name' in stats_df.columns:
+        name_col = 'player_name'
+    else:
         raise KeyError("player_name column missing in stats_df")
 
     career_stats = stats_df.groupby('player_id').agg({
-        'player_name': 'first',
+        name_col: 'first',
         'season': 'count',
         'fantasy_points': 'sum',
         'total_epa': 'sum',
         'passing_yards': 'sum',
         'rushing_yards': 'sum',
-        'receiving_yards': 'sum'
+        'receiving_yards': 'sum',
+        'sacks_suffered': 'sum',
+        'carries': 'sum',
+        'receiving_tds': 'sum',
+        'completions': 'sum',
+        'attempts': 'sum',
+        'passing_epa': 'mean'
     }).rename(columns={
         'season': 'seasons_played', 
         'total_epa': 'total_epa_career', 
-        'fantasy_points': 'total_fantasy_points'
+        'fantasy_points': 'total_fantasy_points',
+        'passing_epa': 'avg_passing_epa'
     }).reset_index()
+    
+    # Calculate derived metrics
+    career_stats['completion_percentage'] = (career_stats['completions'] / career_stats['attempts']).fillna(0) * 100
     
     # Calculate performance score (composite metric)
     career_stats['performance_score'] = (
@@ -76,7 +94,10 @@ def merge_data(draft_df, career_stats, players_df):
     else:
         raise KeyError("Neither 'player_name' nor 'displayName' found in players_df")
 
-    career_stats['clean_name'] = clean_name_func(career_stats['player_name'])
+    if 'player_display_name' in career_stats.columns:
+        career_stats['clean_name'] = clean_name_func(career_stats['player_display_name'])
+    else:
+        career_stats['clean_name'] = clean_name_func(career_stats['player_name'])
     
     # Merge Draft + Physical
     draft_physical = pd.merge(draft_df, players_df[['clean_name', 'height', 'weight', 'position']], 
@@ -92,12 +113,14 @@ def merge_data(draft_df, career_stats, players_df):
                 feet, inches = h.split("-")
                 return int(feet) * 12 + int(inches)
             return None
-        except:
+        except Exception as e:
+            # print(f"Erro ao analisar altura: {h} - {e}")
             return None
 
     draft_physical['height_in'] = draft_physical['height'].apply(parse_height)
     draft_physical['weight'] = pd.to_numeric(draft_physical['weight'], errors='coerce')
-    draft_physical['bmi'] = draft_physical['weight'] / ((draft_physical['height_in'] / 39.37) ** 2)
+    draft_physical['weight_kg'] = draft_physical['weight'] * 0.453592
+    draft_physical['bmi'] = draft_physical['weight_kg'] / ((draft_physical['height_in'] * 0.0254) ** 2)
     
     # Merge with Stats
     full_data = pd.merge(draft_physical, career_stats, on='clean_name', how='left')
@@ -108,31 +131,7 @@ def merge_data(draft_df, career_stats, players_df):
     
     return full_data
 
-def generate_draft_roi_heatmap(df):
-    """Gráfico 1: Heatmap de ROI por Rodada e Posição"""
-    print("Gerando Heatmap de ROI do Draft...")
-    
-    # Filter valid rounds and positions with data
-    plot_df = df[(df['round'].between(1, 7)) & (df['performance_score'].notna())].copy()
-    
-    if plot_df.empty:
-        print("  Pulando Heatmap: Sem dados")
-        return
-    
-    # Group by round and position
-    heatmap_data = plot_df.groupby(['round', 'position'])['performance_score'].mean().reset_index()
-    pivot_data = heatmap_data.pivot(index='round', columns='position', values='performance_score')
-    
-    # Create heatmap
-    plt.figure(figsize=(14, 8))
-    sns.heatmap(pivot_data, annot=True, fmt='.0f', cmap='RdYlGn', 
-                cbar_kws={'label': 'Score Médio de Performance'})
-    plt.title('ROI do Draft: Performance Média por Rodada e Posição', fontsize=16, fontweight='bold', pad=20)
-    plt.xlabel('Posição', fontsize=12)
-    plt.ylabel('Rodada do Draft', fontsize=12)
-    plt.tight_layout()
-    plt.savefig(f'{CHARTS_DIR}/1_draft_roi_heatmap.png', dpi=300, bbox_inches='tight')
-    plt.close()
+
 
 def generate_draft_success_rate(df):
     """Gráfico 2: Taxa de Sucesso por Rodada do Draft"""
@@ -191,65 +190,10 @@ def generate_draft_success_rate(df):
         height=500
     )
     
-    fig.write_html(f'{CHARTS_DIR}/2_draft_success_rate.html')
-    try:
-        fig.write_image(f'{CHARTS_DIR}/2_draft_success_rate.png', width=1200, height=600)
-    except:
-        print("  Não foi possível salvar PNG (kaleido ausente)")
-
-def generate_physical_vs_performance(df):
-    """Gráfico 3: Atributos Físicos vs Performance"""
-    print("Gerando Scatter de Físico vs Performance...")
-    
-    plot_df = df[
-        (df['bmi'].notna()) & 
-        (df['performance_score'].notna()) & 
-        (df['round'].between(1, 7)) &
-        (df['seasons_played'] >= 1)
-    ].copy()
-    
-    if plot_df.empty:
-        print("  Pulando Physical vs Performance: Sem dados")
-        return
-    
-    # Create position groups
-    position_groups = {
-        'QB': 'Ataque', 'RB': 'Ataque', 'WR': 'Ataque', 'TE': 'Ataque',
-        'OL': 'Ataque', 'T': 'Ataque', 'G': 'Ataque', 'C': 'Ataque',
-        'DL': 'Defesa', 'DE': 'Defesa', 'DT': 'Defesa', 'NT': 'Defesa',
-        'LB': 'Defesa', 'DB': 'Defesa', 'CB': 'Defesa', 'S': 'Defesa',
-        'K': 'Especial', 'P': 'Especial', 'LS': 'Especial'
-    }
-    plot_df['grupo'] = plot_df['position'].map(position_groups).fillna('Outro')
-    plot_df['draft_capital'] = 8 - plot_df['round']
-    
-    fig = px.scatter(
-        plot_df,
-        x='bmi',
-        y='performance_score',
-        color='grupo',
-        size='draft_capital',
-        hover_data=['player_name', 'position', 'round', 'college'],
-        title='Atributos Físicos vs Performance: "Monstros" Físicos Performam Melhor?',
-        labels={
-            'bmi': 'IMC (Índice de Massa Corporal)',
-            'performance_score': 'Score de Performance na Carreira',
-            'grupo': 'Grupo',
-            'draft_capital': 'Capital do Draft'
-        },
-        color_discrete_map={'Ataque': '#3498db', 'Defesa': '#e74c3c', 'Especial': '#f39c12', 'Outro': '#95a5a6'},
-        opacity=0.6
-    )
-    
-    fig.update_layout(template='plotly_white', height=600)
-    fig.write_html(f'{CHARTS_DIR}/3_physical_vs_performance.html')
-    try:
-        fig.write_image(f'{CHARTS_DIR}/3_physical_vs_performance.png', width=1400, height=700)
-    except:
-        pass
+    fig.write_image(f'{CHARTS_DIR}/1_draft_success_rate.png', width=1200, height=600)
 
 def generate_position_evolution(df):
-    """Gráfico 4: Evolução das Posições ao Longo do Tempo"""
+    """Gráfico 2: Evolução das Posições ao Longo do Tempo"""
     print("Gerando Timeline de Evolução das Posições...")
     
     plot_df = df[
@@ -263,17 +207,17 @@ def generate_position_evolution(df):
         return
     
     # Calculate average weight by year and position
-    evolution_data = plot_df.groupby(['season', 'position'])['weight'].mean().reset_index()
+    evolution_data = plot_df.groupby(['season', 'position'])['weight_kg'].mean().reset_index()
     
     fig = px.line(
         evolution_data,
         x='season',
-        y='weight',
+        y='weight_kg',
         color='position',
         title='Evolução Física: Como as Posições Mudaram ao Longo do Tempo',
         labels={
             'season': 'Ano do Draft',
-            'weight': 'Peso Médio (lbs)',
+            'weight_kg': 'Peso Médio (kg)',
             'position': 'Posição'
         },
         markers=True
@@ -285,11 +229,7 @@ def generate_position_evolution(df):
         hovermode='x unified'
     )
     
-    fig.write_html(f'{CHARTS_DIR}/4_position_evolution.html')
-    try:
-        fig.write_image(f'{CHARTS_DIR}/4_position_evolution.png', width=1400, height=700)
-    except:
-        pass
+    fig.write_image(f'{CHARTS_DIR}/2_position_evolution.png', width=1400, height=700)
 
 def generate_college_pipeline(df):
     """Gráfico 5: Pipeline de Talentos por Faculdade"""
@@ -344,11 +284,92 @@ def generate_college_pipeline(df):
         yaxis={'categoryorder': 'total ascending'}
     )
     
-    fig.write_html(f'{CHARTS_DIR}/5_college_pipeline.html')
-    try:
-        fig.write_image(f'{CHARTS_DIR}/5_college_pipeline.png', width=1200, height=800)
-    except:
-        pass
+    fig.write_image(f'{CHARTS_DIR}/3_college_pipeline.png', width=1200, height=800)
+    print("  College Pipeline gerado.")
+
+def generate_macro_biotype_scatter(df):
+    """Gráfico 4: Macro Biotipo (BMI vs w_av)"""
+    print("Gerando Macro Biotipo (BMI vs w_av)...")
+    
+    target_pos = ['QB', 'WR', 'RB', 'T', 'G', 'C', 'DE', 'DT']
+    plot_df = df[
+        (df['position'].isin(target_pos)) & 
+        (df['bmi'].notna()) & 
+        (df['w_av'].notna()) &
+        (df['w_av'] > 0) # Filter for players with some value
+    ].copy()
+    
+    if plot_df.empty:
+        print("  Pulando Macro Biotipo: Sem dados")
+        return
+
+    fig = px.scatter(
+        plot_df, 
+        x='bmi', 
+        y='w_av', 
+        color='position',
+        facet_col='position', 
+        facet_col_wrap=4,
+        trendline='ols',
+        hover_name='clean_name',
+        title='Biotipo do Sucesso: BMI vs Valor de Carreira (w_av)',
+        labels={'bmi': 'BMI (Índice de Massa Corporal)', 'w_av': 'Weighted Approximate Value (Carreira)'}
+    )
+    
+    fig.update_layout(height=800, width=1200, template='plotly_white')
+    fig.write_image(f'{CHARTS_DIR}/4_macro_biotype.png')
+    print("  Macro Biotipo gerado.")
+
+def generate_selection_bias_chart(df):
+    """Gráfico 5: Viés de Seleção (Altura/Peso vs Round)"""
+    print("Gerando Gráfico de Viés de Seleção...")
+    
+    plot_df = df[df['round'].between(1, 7)].copy()
+    
+    if plot_df.empty:
+        return
+
+    # Group by round
+    round_data = plot_df.groupby('round').agg({
+        'height_in': 'mean',
+        'weight_kg': 'mean',
+        'w_av': 'mean'
+    }).reset_index()
+    
+    # Create dual axis chart
+    fig = go.Figure()
+    
+    # Bar for w_av
+    fig.add_trace(go.Bar(
+        x=round_data['round'],
+        y=round_data['w_av'],
+        name='Performance Média (w_av)',
+        marker_color='#2ecc71',
+        opacity=0.6,
+        yaxis='y1'
+    ))
+    
+    # Line for Height
+    fig.add_trace(go.Scatter(
+        x=round_data['round'],
+        y=round_data['height_in'],
+        name='Altura Média (in)',
+        mode='lines+markers',
+        line=dict(color='#3498db', width=3),
+        yaxis='y2'
+    ))
+    
+    fig.update_layout(
+        title='Viés de Seleção: Altura vs Performance por Rodada',
+        xaxis_title='Rodada do Draft',
+        yaxis=dict(title='Performance Média (w_av)', side='left'),
+        yaxis2=dict(title='Altura Média (polegadas)', side='right', overlaying='y'),
+        template='plotly_white',
+        legend=dict(x=0.1, y=1.1, orientation='h')
+    )
+    
+    fig.write_image(f'{CHARTS_DIR}/5_selection_bias.png')
+    print("  Viés de Seleção gerado.")
 
 def main():
     with open('BI/debug_log.txt', 'w') as log:
@@ -383,12 +404,32 @@ def main():
             print(f"Dados mesclados: {len(full_data)} jogadores")
             
             # Generate charts
-            log.write("Gerando gráficos...\n")
-            generate_draft_roi_heatmap(full_data)
-            generate_draft_success_rate(full_data)
-            generate_physical_vs_performance(full_data)
-            generate_position_evolution(full_data)
-            generate_college_pipeline(full_data)
+            print("Columns in full_data:", full_data.columns.tolist())
+            
+            try:
+                generate_draft_success_rate(full_data)
+            except Exception as e:
+                print(f"Erro em Success Rate: {e}")
+
+            try:
+                generate_position_evolution(full_data)
+            except Exception as e:
+                print(f"Erro em Position Evolution: {e}")
+
+            try:
+                generate_college_pipeline(full_data)
+            except Exception as e:
+                print(f"Erro em College Pipeline: {e}")
+
+            try:
+                generate_macro_biotype_scatter(full_data)
+            except Exception as e:
+                print(f"Erro em Macro Biotype: {e}")
+
+            try:
+                generate_selection_bias_chart(full_data)
+            except Exception as e:
+                print(f"Erro em Selection Bias: {e}")
 
             log.write("Análise completa! Gráficos salvos em BI/charts/\n")
             print("\n✓ Análise completa! Gráficos salvos em BI/charts/")
