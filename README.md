@@ -4,13 +4,22 @@ Análises de Business Intelligence sobre o Draft da NFL e performance de jogador
 
 ## 📊 Visualizações Disponíveis
 
-Este projeto gera 5 visualizações acionáveis para análise de BI:
+Este projeto gera 11 visualizações para análise física e de performance:
 
-1. **Heatmap de ROI do Draft** - Performance média por rodada e posição
-2. **Taxa de Sucesso por Rodada** - Probabilidade de encontrar talentos por rodada
-3. **Atributos Físicos vs Performance** - Correlação entre IMC e performance
-4. **Evolução das Posições** - Mudanças físicas ao longo de 20+ anos
-5. **Pipeline de Faculdades** - Top 20 universidades produtoras de talentos NFL
+**Análises de Performance:**
+1. **Taxa de Sucesso por Rodada** (`1_draft_success_rate.png`) - Probabilidade de encontrar talentos por rodada
+2. **Evolução das Posições** (`2_position_evolution.png`) - Mudanças no peso médio ao longo de 20+ anos
+3. **Pipeline de Faculdades** (`3_college_pipeline.png`) - Top 20 universidades produtoras de talentos
+4. **Biotipo do Sucesso** (`4_macro_biotype.png`) - IMC vs Valor de Carreira por posição
+5. **Viés de Seleção** (`5_selection_bias.png`) - Altura vs Performance por rodada
+
+**Análises Físicas:**
+6. **Distribuição de Altura** (`6_height_violin.png`) - Violin plot de altura por posição
+7. **Distribuição de Peso** (`7_weight_violin.png`) - Violin plot de peso por posição
+8. **BMI Ideal** (`8_bmi_ideal_ranges.png`) - Faixas de BMI para estrelas por posição
+9. **Scatter Matrix** (`9_scatter_matrix.png`) - Correlações entre altura, peso e performance
+10. **Outliers Físicos** (`10_physical_outliers.png`) - Top 20 jogadores fora do padrão que tiveram sucesso
+11. **Estrelas vs Busts** (`11_stars_vs_busts.png`) - Comparação de perfis físicos
 
 ## 🚀 Como Usar
 
@@ -26,7 +35,7 @@ pip install -r requirements.txt
 python BI/run_analysis.py
 ```
 
-Os gráficos serão gerados em `BI/charts/` nos formatos HTML (interativo) e PNG (estático).
+Os gráficos serão gerados em `BI/charts/` no formato PNG (estático).
 
 ## 📁 Estrutura do Projeto
 

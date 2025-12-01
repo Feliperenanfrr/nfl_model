@@ -371,6 +371,232 @@ def generate_selection_bias_chart(df):
     fig.write_image(f'{CHARTS_DIR}/5_selection_bias.png')
     print("  Viés de Seleção gerado.")
 
+def generate_height_violin(df):
+    """Gráfico 6: Distribuição de Altura por Posição"""
+    print("Gerando Violin Plot de Altura...")
+    
+    target_pos = ['QB', 'RB', 'WR', 'TE', 'T', 'G', 'C', 'DE', 'DT', 'LB', 'CB', 'S']
+    plot_df = df[
+        (df['position'].isin(target_pos)) & 
+        (df['height_in'].notna())
+    ].copy()
+    
+    if plot_df.empty:
+        print("  Pulando Height Violin: Sem dados")
+        return
+    
+    # Convert to cm for better readability
+    plot_df['height_cm'] = plot_df['height_in'] * 2.54
+    
+    plt.figure(figsize=(16, 8))
+    sns.violinplot(data=plot_df, x='position', y='height_cm', order=target_pos, palette='Set2')
+    plt.title('Distribuição de Altura por Posição', fontsize=16, fontweight='bold')
+    plt.xlabel('Posição', fontsize=12)
+    plt.ylabel('Altura (cm)', fontsize=12)
+    plt.xticks(rotation=45)
+    plt.tight_layout()
+    plt.savefig(f'{CHARTS_DIR}/6_height_violin.png', dpi=300)
+    plt.close()
+    print("  Violin Plot de Altura gerado.")
+
+def generate_weight_violin(df):
+    """Gráfico 7: Distribuição de Peso por Posição"""
+    print("Gerando Violin Plot de Peso...")
+    
+    target_pos = ['QB', 'RB', 'WR', 'TE', 'T', 'G', 'C', 'DE', 'DT', 'LB', 'CB', 'S']
+    plot_df = df[
+        (df['position'].isin(target_pos)) & 
+        (df['weight_kg'].notna())
+    ].copy()
+    
+    if plot_df.empty:
+        print("  Pulando Weight Violin: Sem dados")
+        return
+    
+    plt.figure(figsize=(16, 8))
+    sns.violinplot(data=plot_df, x='position', y='weight_kg', order=target_pos, palette='Set2')
+    plt.title('Distribuição de Peso por Posição', fontsize=16, fontweight='bold')
+    plt.xlabel('Posição', fontsize=12)
+    plt.ylabel('Peso (kg)', fontsize=12)
+    plt.xticks(rotation=45)
+    plt.tight_layout()
+    plt.savefig(f'{CHARTS_DIR}/7_weight_violin.png', dpi=300)
+    plt.close()
+    print("  Violin Plot de Peso gerado.")
+
+def generate_bmi_ideal_ranges(df):
+    """Gráfico 8: BMI Ideal por Posição (Faixas de Sucesso)"""
+    print("Gerando BMI Ideal por Posição...")
+    
+    target_pos = ['QB', 'RB', 'WR', 'TE', 'T', 'G', 'C', 'DE', 'DT', 'LB']
+    plot_df = df[
+        (df['position'].isin(target_pos)) & 
+        (df['bmi'].notna()) & 
+        (df['w_av'].notna()) &
+        (df['w_av'] > 0)
+    ].copy()
+    
+    if plot_df.empty:
+        print("  Pulando BMI Ideal: Sem dados")
+        return
+    
+    # Define success tiers
+    percentiles = plot_df['w_av'].quantile([0.75])
+    plot_df['success'] = plot_df['w_av'].apply(lambda x: 'Estrela' if x >= percentiles[0.75] else 'Regular')
+    
+    # Calculate BMI ranges for stars
+    bmi_ranges = plot_df[plot_df['success'] == 'Estrela'].groupby('position')['bmi'].agg(['mean', 'std', 'min', 'max']).reset_index()
+    
+    fig = go.Figure()
+    
+    for _, row in bmi_ranges.iterrows():
+        fig.add_trace(go.Box(
+            y=[row['min'], row['mean'] - row['std'], row['mean'], row['mean'] + row['std'], row['max']],
+            name=row['position'],
+            boxmean='sd'
+        ))
+    
+    fig.update_layout(
+        title='BMI Ideal por Posição (Baseado em Estrelas)',
+        yaxis_title='BMI',
+        xaxis_title='Posição',
+        template='plotly_white',
+        height=600
+    )
+    
+    fig.write_image(f'{CHARTS_DIR}/8_bmi_ideal_ranges.png', width=1400, height=700)
+    print("  BMI Ideal gerado.")
+
+def generate_scatter_matrix(df):
+    """Gráfico 9: Scatter Matrix (Altura x Peso x WAV)"""
+    print("Gerando Scatter Matrix...")
+    
+    plot_df = df[
+        (df['height_in'].notna()) & 
+        (df['weight_kg'].notna()) & 
+        (df['w_av'].notna()) &
+        (df['w_av'] > 0)
+    ].copy()
+    
+    if len(plot_df) < 50:
+        print("  Pulando Scatter Matrix: Dados insuficientes")
+        return
+    
+    # Sample for performance if dataset is too large
+    if len(plot_df) > 2000:
+        plot_df = plot_df.sample(n=2000, random_state=42)
+    
+    # Convert height to cm
+    plot_df['height_cm'] = plot_df['height_in'] * 2.54
+    
+    # Create pairplot
+    pairplot_data = plot_df[['height_cm', 'weight_kg', 'w_av', 'position']]
+    
+    g = sns.pairplot(pairplot_data, hue='position', diag_kind='kde', plot_kws={'alpha': 0.6}, height=3)
+    g.fig.suptitle('Scatter Matrix: Altura x Peso x WAV', y=1.02, fontsize=16, fontweight='bold')
+    plt.tight_layout()
+    plt.savefig(f'{CHARTS_DIR}/9_scatter_matrix.png', dpi=300)
+    plt.close()
+    print("  Scatter Matrix gerado.")
+
+def generate_physical_outliers(df):
+    """Gráfico 10: Outliers Físicos de Sucesso"""
+    print("Gerando Outliers Físicos...")
+    
+    plot_df = df[
+        (df['height_in'].notna()) & 
+        (df['weight_kg'].notna()) & 
+        (df['w_av'].notna()) &
+        (df['w_av'] > 10)  # High performers only
+    ].copy()
+    
+    if plot_df.empty:
+        print("  Pulando Outliers: Sem dados")
+        return
+    
+    # Calculate z-scores for height and weight by position
+    plot_df['height_z'] = plot_df.groupby('position')['height_in'].transform(lambda x: np.abs(stats.zscore(x)))
+    plot_df['weight_z'] = plot_df.groupby('position')['weight_kg'].transform(lambda x: np.abs(stats.zscore(x)))
+    
+    # Define outliers as those with z-score > 2 in either dimension
+    outliers = plot_df[(plot_df['height_z'] > 2) | (plot_df['weight_z'] > 2)].copy()
+    
+    if outliers.empty:
+        print("  Nenhum outlier encontrado")
+        return
+    
+    # Sort by w_av and get top 20
+    top_outliers = outliers.nlargest(20, 'w_av')
+    
+    fig = px.scatter(
+        top_outliers,
+        x='weight_kg',
+        y='height_in',
+        size='w_av',
+        color='position',
+        hover_name='clean_name',
+        hover_data=['position', 'w_av', 'height_in', 'weight_kg'],
+        title='Top 20 Outliers Físicos de Sucesso (Fora do Padrão)',
+        labels={'weight_kg': 'Peso (kg)', 'height_in': 'Altura (polegadas)', 'w_av': 'Performance'}
+    )
+    
+    fig.update_layout(template='plotly_white', height=700)
+    fig.write_image(f'{CHARTS_DIR}/10_physical_outliers.png', width=1400, height=700)
+    print("  Outliers Físicos gerados.")
+
+def generate_stars_vs_busts(df):
+    """Gráfico 11: Perfil Físico - Estrelas vs Busts"""
+    print("Gerando Estrelas vs Busts...")
+    
+    plot_df = df[
+        (df['bmi'].notna()) & 
+        (df['w_av'].notna())
+    ].copy()
+    
+    if plot_df.empty:
+        print("  Pulando Stars vs Busts: Sem dados")
+        return
+    
+    # Define stars and busts based on w_av percentiles
+    percentiles = plot_df['w_av'].quantile([0.25, 0.75])
+    
+    def categorize(w_av):
+        if w_av >= percentiles[0.75]:
+            return 'Estrela (Top 25%)'
+        elif w_av <= percentiles[0.25]:
+            return 'Bust (Bottom 25%)'
+        return 'Regular'
+    
+    plot_df['category'] = plot_df['w_av'].apply(categorize)
+    
+    # Filter to only stars and busts
+    comparison_df = plot_df[plot_df['category'].isin(['Estrela (Top 25%)', 'Bust (Bottom 25%)'])].copy()
+    
+    if comparison_df.empty:
+        print("  Dados insuficientes para comparação")
+        return
+    
+    # Create comparison plots
+    fig, axes = plt.subplots(1, 2, figsize=(16, 6))
+    
+    # BMI comparison
+    sns.violinplot(data=comparison_df, x='category', y='bmi', ax=axes[0], palette=['#2ecc71', '#e74c3c'])
+    axes[0].set_title('Comparação de BMI', fontsize=14, fontweight='bold')
+    axes[0].set_xlabel('')
+    axes[0].set_ylabel('BMI')
+    
+    # Weight comparison
+    sns.violinplot(data=comparison_df, x='category', y='weight_kg', ax=axes[1], palette=['#2ecc71', '#e74c3c'])
+    axes[1].set_title('Comparação de Peso', fontsize=14, fontweight='bold')
+    axes[1].set_xlabel('')
+    axes[1].set_ylabel('Peso (kg)')
+    
+    plt.suptitle('Perfil Físico: Estrelas vs Busts', fontsize=16, fontweight='bold', y=1.02)
+    plt.tight_layout()
+    plt.savefig(f'{CHARTS_DIR}/11_stars_vs_busts.png', dpi=300)
+    plt.close()
+    print("  Estrelas vs Busts gerado.")
+
 def main():
     with open('BI/debug_log.txt', 'w') as log:
         try:
@@ -430,6 +656,36 @@ def main():
                 generate_selection_bias_chart(full_data)
             except Exception as e:
                 print(f"Erro em Selection Bias: {e}")
+
+            try:
+                generate_height_violin(full_data)
+            except Exception as e:
+                print(f"Erro em Height Violin: {e}")
+
+            try:
+                generate_weight_violin(full_data)
+            except Exception as e:
+                print(f"Erro em Weight Violin: {e}")
+
+            try:
+                generate_bmi_ideal_ranges(full_data)
+            except Exception as e:
+                print(f"Erro em BMI Ideal: {e}")
+
+            try:
+                generate_scatter_matrix(full_data)
+            except Exception as e:
+                print(f"Erro em Scatter Matrix: {e}")
+
+            try:
+                generate_physical_outliers(full_data)
+            except Exception as e:
+                print(f"Erro em Physical Outliers: {e}")
+
+            try:
+                generate_stars_vs_busts(full_data)
+            except Exception as e:
+                print(f"Erro em Stars vs Busts: {e}")
 
             log.write("Análise completa! Gráficos salvos em BI/charts/\n")
             print("\n✓ Análise completa! Gráficos salvos em BI/charts/")

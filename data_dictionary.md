@@ -93,6 +93,21 @@ Este documento detalha os dados disponíveis no repositório para análises de B
 ## 6. Metadados de Jogadores (`players.csv`)
 **Conteúdo:** Dados físicos e biográficos.
 - `height`, `weight`, `collegeName`, `position`, `birthDate`
+- **Nota:** O peso é convertido para Kilogramas (`weight_kg`) nas análises.
+
+---
+
+## 7. Métricas Derivadas e Transformações
+
+Para as análises de BI, foram criadas as seguintes métricas calculadas:
+
+| Métrica | Fórmula / Descrição |
+|---------|---------------------|
+| **`weight_kg`** | `weight (lbs) * 0.453592`. Conversão para sistema métrico. |
+| **`performance_score`** | `(total_epa_career * 0.6) + (total_fantasy_points * 0.4)`. Métrica composta para avaliar impacto geral. |
+| **`w_av`** | *Weighted Approximate Value*. Métrica oficial do PFR para valor de carreira (já presente no dataset de draft). |
+| **`bmi`** | Índice de Massa Corporal calculado com `weight_kg` e `height_in`. |
+| **`clean_name`** | Normalização de nomes (remoção de sufixos, pontuação) para cruzar dados de diferentes fontes. |
 
 ---
 
