@@ -19,31 +19,35 @@ os.makedirs(CHARTS_DIR, exist_ok=True)
 def get_position_group(pos):
     """Maps specific positions to broader groups."""
     groups = {
-        'QB': 'Quarterback',
-        'RB': 'Running Back',
-        'FB': 'Running Back',
-        'WR': 'Receiver',
-        'TE': 'Receiver',
-        'T': 'Lineman',
-        'LT': 'Lineman',
-        'RT': 'Lineman',
-        'G': 'Lineman',
-        'LG': 'Lineman',
-        'RG': 'Lineman',
-        'C': 'Lineman',
-        'DE': 'Lineman',
-        'DT': 'Lineman',
-        'NT': 'Lineman',
-        'LB': 'Linebacker',
-        'ILB': 'Linebacker',
-        'OLB': 'Linebacker',
-        'CB': 'Defensive Back',
-        'S': 'Defensive Back',
-        'FS': 'Defensive Back',
-        'SS': 'Defensive Back',
-        'K': 'Special Teams',
-        'P': 'Special Teams',
-        'LS': 'Special Teams'
+        'QB': 'QB',
+        'RB': 'RB',
+        'FB': 'RB',
+        'WR': 'WR',
+        'TE': 'TE',
+        'T': 'OL',
+        'LT': 'OL',
+        'RT': 'OL',
+        'G': 'OL',
+        'LG': 'OL',
+        'RG': 'OL',
+        'C': 'OL',
+        'OL': 'OL',
+        'DE': 'DL',
+        'DT': 'DL',
+        'NT': 'DL',
+        'DL': 'DL',
+        'LB': 'LB',
+        'ILB': 'LB',
+        'OLB': 'LB',
+        'MLB': 'LB',
+        'CB': 'DB',
+        'S': 'DB',
+        'FS': 'DB',
+        'SS': 'DB',
+        'DB': 'DB',
+        'K': 'ST',
+        'P': 'ST',
+        'LS': 'ST'
     }
     return groups.get(pos, 'Outros')
 
@@ -419,7 +423,7 @@ def generate_position_evolution(df):
     plot_df = df[
         (df['season'].between(2000, 2023)) & 
         (df['weight'].notna()) &
-        (df['position'].isin(['QB', 'RB', 'WR', 'TE', 'LB', 'DE', 'DT', 'CB', 'S']))
+        (df['position_group'].isin(['QB', 'RB', 'WR', 'TE', 'LB', 'DL', 'DB', 'OL']))
     ].copy()
     
     if plot_df.empty:
@@ -427,18 +431,18 @@ def generate_position_evolution(df):
         return
     
     # Calculate average weight by year and position
-    evolution_data = plot_df.groupby(['season', 'position'])['weight_kg'].mean().reset_index()
+    evolution_data = plot_df.groupby(['season', 'position_group'])['weight_kg'].mean().reset_index()
     
     fig = px.line(
         evolution_data,
         x='season',
         y='weight_kg',
-        color='position',
+        color='position_group',
         title='Evolução Física: Como as Posições Mudaram ao Longo do Tempo',
         labels={
             'season': 'Ano do Draft',
             'weight_kg': 'Peso Médio (kg)',
-            'position': 'Posição'
+            'position_group': 'Grupo de Posição'
         },
         markers=True
     )
@@ -511,9 +515,9 @@ def generate_macro_biotype_scatter(df):
     """Gráfico 7: Macro Biotipo (BMI vs w_av)"""
     print("Gerando Macro Biotipo (BMI vs w_av)...")
     
-    target_pos = ['QB', 'WR', 'RB', 'T', 'G', 'C', 'DE', 'DT']
+    target_pos = ['QB', 'WR', 'RB', 'OL', 'DL', 'LB', 'DB']
     plot_df = df[
-        (df['position'].isin(target_pos)) & 
+        (df['position_group'].isin(target_pos)) & 
         (df['bmi'].notna()) & 
         (df['w_av'].notna()) &
         (df['w_av'] > 0) # Filter for players with some value
@@ -527,8 +531,8 @@ def generate_macro_biotype_scatter(df):
         plot_df, 
         x='bmi', 
         y='w_av', 
-        color='position',
-        facet_col='position', 
+        color='position_group',
+        facet_col='position_group', 
         facet_col_wrap=4,
         trendline='ols',
         hover_name='clean_name',
@@ -595,9 +599,9 @@ def generate_height_violin(df):
     """Gráfico 9: Distribuição de Altura por Posição"""
     print("Gerando Violin Plot de Altura...")
     
-    target_pos = ['QB', 'RB', 'WR', 'TE', 'T', 'G', 'C', 'DE', 'DT', 'LB', 'CB', 'S']
+    target_pos = ['QB', 'RB', 'WR', 'TE', 'OL', 'DL', 'LB', 'DB']
     plot_df = df[
-        (df['position'].isin(target_pos)) & 
+        (df['position_group'].isin(target_pos)) & 
         (df['height_in'].notna())
     ].copy()
     
@@ -609,9 +613,9 @@ def generate_height_violin(df):
     plot_df['height_cm'] = plot_df['height_in'] * 2.54
     
     plt.figure(figsize=(16, 8))
-    sns.violinplot(data=plot_df, x='position', y='height_cm', order=target_pos, palette='Set2')
-    plt.title('Distribuição de Altura por Posição', fontsize=16, fontweight='bold')
-    plt.xlabel('Posição', fontsize=12)
+    sns.violinplot(data=plot_df, x='position_group', y='height_cm', order=target_pos, palette='Set2')
+    plt.title('Distribuição de Altura por Grupo de Posição', fontsize=16, fontweight='bold')
+    plt.xlabel('Grupo de Posição', fontsize=12)
     plt.ylabel('Altura (cm)', fontsize=12)
     plt.xticks(rotation=45)
     plt.tight_layout()
@@ -623,9 +627,9 @@ def generate_weight_violin(df):
     """Gráfico 10: Distribuição de Peso por Posição"""
     print("Gerando Violin Plot de Peso...")
     
-    target_pos = ['QB', 'RB', 'WR', 'TE', 'T', 'G', 'C', 'DE', 'DT', 'LB', 'CB', 'S']
+    target_pos = ['QB', 'RB', 'WR', 'TE', 'OL', 'DL', 'LB', 'DB']
     plot_df = df[
-        (df['position'].isin(target_pos)) & 
+        (df['position_group'].isin(target_pos)) & 
         (df['weight_kg'].notna())
     ].copy()
     
@@ -634,9 +638,9 @@ def generate_weight_violin(df):
         return
     
     plt.figure(figsize=(16, 8))
-    sns.violinplot(data=plot_df, x='position', y='weight_kg', order=target_pos, palette='Set2')
-    plt.title('Distribuição de Peso por Posição', fontsize=16, fontweight='bold')
-    plt.xlabel('Posição', fontsize=12)
+    sns.violinplot(data=plot_df, x='position_group', y='weight_kg', order=target_pos, palette='Set2')
+    plt.title('Distribuição de Peso por Grupo de Posição', fontsize=16, fontweight='bold')
+    plt.xlabel('Grupo de Posição', fontsize=12)
     plt.ylabel('Peso (kg)', fontsize=12)
     plt.xticks(rotation=45)
     plt.tight_layout()
@@ -648,9 +652,9 @@ def generate_bmi_ideal_ranges(df):
     """Gráfico 11: BMI Ideal por Posição (Faixas de Sucesso)"""
     print("Gerando BMI Ideal por Posição...")
     
-    target_pos = ['QB', 'RB', 'WR', 'TE', 'T', 'G', 'C', 'DE', 'DT', 'LB']
+    target_pos = ['QB', 'RB', 'WR', 'TE', 'OL', 'DL', 'LB', 'DB']
     plot_df = df[
-        (df['position'].isin(target_pos)) & 
+        (df['position_group'].isin(target_pos)) & 
         (df['bmi'].notna()) & 
         (df['w_av'].notna()) &
         (df['w_av'] > 0)
@@ -665,21 +669,21 @@ def generate_bmi_ideal_ranges(df):
     plot_df['success'] = plot_df['w_av'].apply(lambda x: 'Estrela' if x >= percentiles[0.75] else 'Regular')
     
     # Calculate BMI ranges for stars
-    bmi_ranges = plot_df[plot_df['success'] == 'Estrela'].groupby('position')['bmi'].agg(['mean', 'std', 'min', 'max']).reset_index()
+    bmi_ranges = plot_df[plot_df['success'] == 'Estrela'].groupby('position_group')['bmi'].agg(['mean', 'std', 'min', 'max']).reset_index()
     
     fig = go.Figure()
     
     for _, row in bmi_ranges.iterrows():
         fig.add_trace(go.Box(
             y=[row['min'], row['mean'] - row['std'], row['mean'], row['mean'] + row['std'], row['max']],
-            name=row['position'],
+            name=row['position_group'],
             boxmean='sd'
         ))
     
     fig.update_layout(
-        title='IMC Ideal por Posição (Baseado em Estrelas)',
+        title='IMC Ideal por Grupo de Posição (Baseado em Estrelas)',
         yaxis_title='IMC',
-        xaxis_title='Posição',
+        xaxis_title='Grupo de Posição',
         template='plotly_white',
         height=600
     )
@@ -710,9 +714,9 @@ def generate_scatter_matrix(df):
     plot_df['height_cm'] = plot_df['height_in'] * 2.54
     
     # Create pairplot
-    pairplot_data = plot_df[['height_cm', 'weight_kg', 'w_av', 'position']]
+    pairplot_data = plot_df[['height_cm', 'weight_kg', 'w_av', 'position_group']]
     
-    g = sns.pairplot(pairplot_data, hue='position', diag_kind='kde', plot_kws={'alpha': 0.6}, height=3)
+    g = sns.pairplot(pairplot_data, hue='position_group', diag_kind='kde', plot_kws={'alpha': 0.6}, height=3)
     g.fig.suptitle('Scatter Matrix: Altura x Peso x WAV', y=1.02, fontsize=16, fontweight='bold')
     plt.tight_layout()
     plt.savefig(f'{CHARTS_DIR}/12_scatter_matrix.png', dpi=300)
@@ -735,8 +739,8 @@ def generate_physical_outliers(df):
         return
     
     # Calculate z-scores for height and weight by position
-    plot_df['height_z'] = plot_df.groupby('position')['height_in'].transform(lambda x: np.abs(stats.zscore(x)))
-    plot_df['weight_z'] = plot_df.groupby('position')['weight_kg'].transform(lambda x: np.abs(stats.zscore(x)))
+    plot_df['height_z'] = plot_df.groupby('position_group')['height_in'].transform(lambda x: np.abs(stats.zscore(x)))
+    plot_df['weight_z'] = plot_df.groupby('position_group')['weight_kg'].transform(lambda x: np.abs(stats.zscore(x)))
     
     # Define outliers as those with z-score > 2 in either dimension
     outliers = plot_df[(plot_df['height_z'] > 2) | (plot_df['weight_z'] > 2)].copy()
@@ -753,7 +757,7 @@ def generate_physical_outliers(df):
         x='weight_kg',
         y='height_in',
         size='w_av',
-        color='position',
+        color='position_group',
         hover_name='clean_name',
         hover_data=['position', 'w_av', 'height_in', 'weight_kg'],
         title='Top 20 Outliers Físicos de Sucesso (Fora do Padrão)',
