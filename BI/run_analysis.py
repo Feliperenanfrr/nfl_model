@@ -16,6 +16,37 @@ sns.set_theme(style="whitegrid", context="talk", palette="viridis")
 CHARTS_DIR = 'BI/charts/'
 os.makedirs(CHARTS_DIR, exist_ok=True)
 
+def get_position_group(pos):
+    """Maps specific positions to broader groups."""
+    groups = {
+        'QB': 'Quarterback',
+        'RB': 'Running Back',
+        'FB': 'Running Back',
+        'WR': 'Receiver',
+        'TE': 'Receiver',
+        'T': 'Lineman',
+        'LT': 'Lineman',
+        'RT': 'Lineman',
+        'G': 'Lineman',
+        'LG': 'Lineman',
+        'RG': 'Lineman',
+        'C': 'Lineman',
+        'DE': 'Lineman',
+        'DT': 'Lineman',
+        'NT': 'Lineman',
+        'LB': 'Linebacker',
+        'ILB': 'Linebacker',
+        'OLB': 'Linebacker',
+        'CB': 'Defensive Back',
+        'S': 'Defensive Back',
+        'FS': 'Defensive Back',
+        'SS': 'Defensive Back',
+        'K': 'Special Teams',
+        'P': 'Special Teams',
+        'LS': 'Special Teams'
+    }
+    return groups.get(pos, 'Outros')
+
 def process_player_stats(stats_df):
     """Aggregates player stats by player_id."""
     print("  Processando estatísticas dos jogadores...")
@@ -118,9 +149,13 @@ def merge_data(draft_df, career_stats, players_df):
             return None
 
     draft_physical['height_in'] = draft_physical['height'].apply(parse_height)
+    draft_physical['height_m'] = draft_physical['height_in'] * 0.0254
     draft_physical['weight'] = pd.to_numeric(draft_physical['weight'], errors='coerce')
     draft_physical['weight_kg'] = draft_physical['weight'] * 0.453592
-    draft_physical['bmi'] = draft_physical['weight_kg'] / ((draft_physical['height_in'] * 0.0254) ** 2)
+    draft_physical['bmi'] = draft_physical['weight_kg'] / (draft_physical['height_m'] ** 2)
+    
+    # Assign Position Group
+    draft_physical['position_group'] = draft_physical['position'].apply(get_position_group)
     
     # Merge with Stats
     full_data = pd.merge(draft_physical, career_stats, on='clean_name', how='left')
@@ -131,10 +166,195 @@ def merge_data(draft_df, career_stats, players_df):
     
     return full_data
 
+def generate_biotype_scatter(df):
+    """Gráfico 1: Distribuição de Altura e Peso por Posição"""
+    print("Gerando Gráfico 1: Scatter Plot (Altura x Peso)...")
+    
+    plot_df = df[
+        (df['height_m'].notna()) & 
+        (df['weight_kg'].notna()) &
+        (df['position_group'] != 'Outros')
+    ].copy()
+    
+    if plot_df.empty:
+        print("  Pulando Gráfico 1: Sem dados")
+        return
 
+    fig = px.scatter(
+        plot_df, 
+        x='weight_kg', 
+        y='height_m', 
+        color='position_group',
+        title='Distribuição Física: Peso vs Altura por Grupo de Posição',
+        labels={
+            'weight_kg': 'Peso (kg)', 
+            'height_m': 'Altura (m)',
+            'position_group': 'Grupo de Posição'
+        },
+        opacity=0.7,
+        hover_data=['position', 'clean_name']
+    )
+    
+    fig.update_layout(
+        template='plotly_white',
+        height=700,
+        width=1000,
+        legend=dict(title='Grupo')
+    )
+    
+    fig.write_image(f'{CHARTS_DIR}/1_biotype_scatter.png')
+    print("  Gráfico 1 gerado.")
+
+def generate_variability_analysis(df):
+    """Gráfico 2: Variabilidade (Desvio Padrão) de Altura e Peso"""
+    print("Gerando Gráfico 2: Análise de Variabilidade...")
+    
+    plot_df = df[
+        (df['height_m'].notna()) & 
+        (df['weight_kg'].notna()) &
+        (df['position_group'] != 'Outros')
+    ].copy()
+    
+    if plot_df.empty:
+        print("  Pulando Gráfico 2: Sem dados")
+        return
+    
+    # Calculate Std Dev
+    variability = plot_df.groupby('position_group').agg({
+        'height_m': 'std',
+        'weight_kg': 'std'
+    }).reset_index().rename(columns={
+        'height_m': 'std_height',
+        'weight_kg': 'std_weight'
+    })
+    
+    # Melt for clustered bar chart
+    variability_melted = variability.melt(
+        id_vars='position_group', 
+        value_vars=['std_height', 'std_weight'],
+        var_name='Metric',
+        value_name='StdDev'
+    )
+    
+    # Normalize values for better visualization (since scales are different)
+    # We will plot raw values but maybe on dual axis? Or just side-by-side bars.
+    # The prompt asks for "Clustered Bar Chart".
+    # Since Height SD is small (~0.05-0.15) and Weight SD is large (~5-15), 
+    # plotting them on the same scale is bad.
+    # Let's use Facets or just normalize to Z-score or % of mean?
+    # The prompt says: "Eixo X (Valores): Desvio Padrão da Altura e Desvio Padrão do Peso".
+    # Let's try to plot them side-by-side but we might need dual axis or just two charts.
+    # Actually, let's use Facets to handle the scale difference.
+    
+    variability_melted['Metric_Label'] = variability_melted['Metric'].map({
+        'std_height': 'Desvio Padrão - Altura (m)',
+        'std_weight': 'Desvio Padrão - Peso (kg)'
+    })
+    
+    fig = px.bar(
+        variability_melted,
+        y='position_group',
+        x='StdDev',
+        color='Metric_Label',
+        barmode='group',
+        facet_col='Metric_Label',
+        facet_col_spacing=0.1,
+        title='Variabilidade Física por Posição (Desvio Padrão)',
+        labels={'position_group': 'Grupo de Posição', 'StdDev': 'Desvio Padrão'},
+        orientation='h'
+    )
+    
+    # Allow independent x-axes
+    fig.update_xaxes(matches=None)
+    fig.update_layout(
+        template='plotly_white',
+        height=600,
+        width=1200,
+        showlegend=False
+    )
+    
+    fig.write_image(f'{CHARTS_DIR}/2_variability_analysis.png')
+    print("  Gráfico 2 gerado.")
+
+def generate_top_qbs_score(stats_df):
+    """Gráfico 3: Top QBs por Média de Pontuação do Time"""
+    print("Gerando Gráfico 3: Top QBs por Pontuação...")
+    
+    # Load games data
+    try:
+        games_df = pd.read_csv('games.csv')
+    except FileNotFoundError:
+        print("  Erro: games.csv não encontrado.")
+        return
+
+    # Filter stats for QBs
+    qb_stats = stats_df[stats_df['position'] == 'QB'].copy()
+    
+    if qb_stats.empty:
+        print("  Pulando Gráfico 3: Sem dados de QBs")
+        return
+
+    # Prepare keys for merge
+    # stats_df has: season, week, team
+    # games_df has: season, week, home_team, away_team, home_score, away_score
+    
+    # We need to map team abbreviations if they differ, but let's assume they match for now.
+    # We need to join twice or normalize games to (season, week, team, score)
+    
+    games_home = games_df[['game_id', 'season', 'week', 'home_team', 'home_score']].rename(columns={'home_team': 'team', 'home_score': 'team_score'})
+    games_away = games_df[['game_id', 'season', 'week', 'away_team', 'away_score']].rename(columns={'away_team': 'team', 'away_score': 'team_score'})
+    games_flat = pd.concat([games_home, games_away], ignore_index=True)
+    
+    # Merge QBs with Game Scores
+    # Ensure types match
+    qb_stats['season'] = qb_stats['season'].astype(int)
+    qb_stats['week'] = qb_stats['week'].astype(int)
+    games_flat['season'] = games_flat['season'].astype(int)
+    games_flat['week'] = games_flat['week'].astype(int)
+    
+    merged_df = pd.merge(qb_stats, games_flat, on=['season', 'week', 'team'], how='inner')
+    
+    if merged_df.empty:
+        print("  Aviso: Merge de QBs com Games retornou vazio. Verifique nomes dos times.")
+        # Fallback: Use fantasy points as proxy if score fails? No, prompt asks for Score.
+        return
+
+    # Calculate Average Score per QB
+    # Filter for QBs with significant playing time (e.g. > 10 attempts in the game) to avoid backups skewing data
+    merged_df = merged_df[merged_df['attempts'] > 10]
+    
+    qb_scores = merged_df.groupby('player_display_name').agg({
+        'team_score': 'mean',
+        'game_id': 'count' # using game_id or any column to count games
+    }).rename(columns={'game_id': 'games_played'}).reset_index()
+    
+    # Filter Top 15 with at least 10 games played
+    qb_scores = qb_scores[qb_scores['games_played'] >= 10].sort_values('team_score', ascending=False).head(15)
+    
+    fig = px.bar(
+        qb_scores,
+        x='team_score',
+        y='player_display_name',
+        orientation='h',
+        title='Top 15 QBs: Média de Pontuação do Time por Jogo',
+        labels={'team_score': 'Média de Pontos do Time', 'player_display_name': 'Quarterback'},
+        text_auto='.1f',
+        color='team_score',
+        color_continuous_scale='Viridis'
+    )
+    
+    fig.update_layout(
+        template='plotly_white',
+        height=800,
+        width=1000,
+        yaxis={'categoryorder': 'total ascending'}
+    )
+    
+    fig.write_image(f'{CHARTS_DIR}/3_top_qbs_score.png')
+    print("  Gráfico 3 gerado.")
 
 def generate_draft_success_rate(df):
-    """Gráfico 2: Taxa de Sucesso por Rodada do Draft"""
+    """Gráfico 4: Taxa de Sucesso por Rodada do Draft"""
     print("Gerando Taxa de Sucesso por Rodada...")
     
     plot_df = df[(df['round'].between(1, 7)) & (df['performance_score'].notna())].copy()
@@ -190,10 +410,10 @@ def generate_draft_success_rate(df):
         height=500
     )
     
-    fig.write_image(f'{CHARTS_DIR}/1_draft_success_rate.png', width=1200, height=600)
+    fig.write_image(f'{CHARTS_DIR}/4_draft_success_rate.png', width=1200, height=600)
 
 def generate_position_evolution(df):
-    """Gráfico 2: Evolução das Posições ao Longo do Tempo"""
+    """Gráfico 5: Evolução das Posições ao Longo do Tempo"""
     print("Gerando Timeline de Evolução das Posições...")
     
     plot_df = df[
@@ -229,10 +449,10 @@ def generate_position_evolution(df):
         hovermode='x unified'
     )
     
-    fig.write_image(f'{CHARTS_DIR}/2_position_evolution.png', width=1400, height=700)
+    fig.write_image(f'{CHARTS_DIR}/5_position_evolution.png', width=1400, height=700)
 
 def generate_college_pipeline(df):
-    """Gráfico 5: Pipeline de Talentos por Faculdade"""
+    """Gráfico 6: Pipeline de Talentos por Faculdade"""
     print("Gerando Análise de Pipeline das Faculdades...")
     
     plot_df = df[
@@ -284,11 +504,11 @@ def generate_college_pipeline(df):
         yaxis={'categoryorder': 'total ascending'}
     )
     
-    fig.write_image(f'{CHARTS_DIR}/3_college_pipeline.png', width=1200, height=800)
+    fig.write_image(f'{CHARTS_DIR}/6_college_pipeline.png', width=1200, height=800)
     print("  College Pipeline gerado.")
 
 def generate_macro_biotype_scatter(df):
-    """Gráfico 4: Macro Biotipo (BMI vs w_av)"""
+    """Gráfico 7: Macro Biotipo (BMI vs w_av)"""
     print("Gerando Macro Biotipo (BMI vs w_av)...")
     
     target_pos = ['QB', 'WR', 'RB', 'T', 'G', 'C', 'DE', 'DT']
@@ -317,11 +537,11 @@ def generate_macro_biotype_scatter(df):
     )
     
     fig.update_layout(height=800, width=1200, template='plotly_white')
-    fig.write_image(f'{CHARTS_DIR}/4_macro_biotype.png')
+    fig.write_image(f'{CHARTS_DIR}/7_macro_biotype.png')
     print("  Macro Biotipo gerado.")
 
 def generate_selection_bias_chart(df):
-    """Gráfico 5: Viés de Seleção (Altura/Peso vs Round)"""
+    """Gráfico 8: Viés de Seleção (Altura/Peso vs Round)"""
     print("Gerando Gráfico de Viés de Seleção...")
     
     plot_df = df[df['round'].between(1, 7)].copy()
@@ -368,11 +588,11 @@ def generate_selection_bias_chart(df):
         legend=dict(x=0.1, y=1.1, orientation='h')
     )
     
-    fig.write_image(f'{CHARTS_DIR}/5_selection_bias.png')
+    fig.write_image(f'{CHARTS_DIR}/8_selection_bias.png')
     print("  Viés de Seleção gerado.")
 
 def generate_height_violin(df):
-    """Gráfico 6: Distribuição de Altura por Posição"""
+    """Gráfico 9: Distribuição de Altura por Posição"""
     print("Gerando Violin Plot de Altura...")
     
     target_pos = ['QB', 'RB', 'WR', 'TE', 'T', 'G', 'C', 'DE', 'DT', 'LB', 'CB', 'S']
@@ -395,12 +615,12 @@ def generate_height_violin(df):
     plt.ylabel('Altura (cm)', fontsize=12)
     plt.xticks(rotation=45)
     plt.tight_layout()
-    plt.savefig(f'{CHARTS_DIR}/6_height_violin.png', dpi=300)
+    plt.savefig(f'{CHARTS_DIR}/9_height_violin.png', dpi=300)
     plt.close()
     print("  Violin Plot de Altura gerado.")
 
 def generate_weight_violin(df):
-    """Gráfico 7: Distribuição de Peso por Posição"""
+    """Gráfico 10: Distribuição de Peso por Posição"""
     print("Gerando Violin Plot de Peso...")
     
     target_pos = ['QB', 'RB', 'WR', 'TE', 'T', 'G', 'C', 'DE', 'DT', 'LB', 'CB', 'S']
@@ -420,12 +640,12 @@ def generate_weight_violin(df):
     plt.ylabel('Peso (kg)', fontsize=12)
     plt.xticks(rotation=45)
     plt.tight_layout()
-    plt.savefig(f'{CHARTS_DIR}/7_weight_violin.png', dpi=300)
+    plt.savefig(f'{CHARTS_DIR}/10_weight_violin.png', dpi=300)
     plt.close()
     print("  Violin Plot de Peso gerado.")
 
 def generate_bmi_ideal_ranges(df):
-    """Gráfico 8: BMI Ideal por Posição (Faixas de Sucesso)"""
+    """Gráfico 11: BMI Ideal por Posição (Faixas de Sucesso)"""
     print("Gerando BMI Ideal por Posição...")
     
     target_pos = ['QB', 'RB', 'WR', 'TE', 'T', 'G', 'C', 'DE', 'DT', 'LB']
@@ -464,11 +684,11 @@ def generate_bmi_ideal_ranges(df):
         height=600
     )
     
-    fig.write_image(f'{CHARTS_DIR}/8_bmi_ideal_ranges.png', width=1400, height=700)
+    fig.write_image(f'{CHARTS_DIR}/11_bmi_ideal_ranges.png', width=1400, height=700)
     print("  BMI Ideal gerado.")
 
 def generate_scatter_matrix(df):
-    """Gráfico 9: Scatter Matrix (Altura x Peso x WAV)"""
+    """Gráfico 12: Scatter Matrix (Altura x Peso x WAV)"""
     print("Gerando Scatter Matrix...")
     
     plot_df = df[
@@ -495,12 +715,12 @@ def generate_scatter_matrix(df):
     g = sns.pairplot(pairplot_data, hue='position', diag_kind='kde', plot_kws={'alpha': 0.6}, height=3)
     g.fig.suptitle('Scatter Matrix: Altura x Peso x WAV', y=1.02, fontsize=16, fontweight='bold')
     plt.tight_layout()
-    plt.savefig(f'{CHARTS_DIR}/9_scatter_matrix.png', dpi=300)
+    plt.savefig(f'{CHARTS_DIR}/12_scatter_matrix.png', dpi=300)
     plt.close()
     print("  Scatter Matrix gerado.")
 
 def generate_physical_outliers(df):
-    """Gráfico 10: Outliers Físicos de Sucesso"""
+    """Gráfico 13: Outliers Físicos de Sucesso"""
     print("Gerando Outliers Físicos...")
     
     plot_df = df[
@@ -541,11 +761,11 @@ def generate_physical_outliers(df):
     )
     
     fig.update_layout(template='plotly_white', height=700)
-    fig.write_image(f'{CHARTS_DIR}/10_physical_outliers.png', width=1400, height=700)
+    fig.write_image(f'{CHARTS_DIR}/13_physical_outliers.png', width=1400, height=700)
     print("  Outliers Físicos gerados.")
 
 def generate_stars_vs_busts(df):
-    """Gráfico 11: Perfil Físico - Estrelas vs Busts"""
+    """Gráfico 14: Perfil Físico - Estrelas vs Busts"""
     print("Gerando Estrelas vs Busts...")
     
     plot_df = df[
@@ -593,7 +813,7 @@ def generate_stars_vs_busts(df):
     
     plt.suptitle('Perfil Físico: Estrelas vs Busts', fontsize=16, fontweight='bold', y=1.02)
     plt.tight_layout()
-    plt.savefig(f'{CHARTS_DIR}/11_stars_vs_busts.png', dpi=300)
+    plt.savefig(f'{CHARTS_DIR}/14_stars_vs_busts.png', dpi=300)
     plt.close()
     print("  Estrelas vs Busts gerado.")
 
@@ -629,9 +849,26 @@ def main():
             log.write(f"Dados mesclados: {len(full_data)} jogadores\n")
             print(f"Dados mesclados: {len(full_data)} jogadores")
             
-            # Generate charts
-            print("Columns in full_data:", full_data.columns.tolist())
-            
+            # Generate Charts
+            try:
+                generate_biotype_scatter(full_data)
+            except Exception as e:
+                print(f"Erro no Gráfico 1: {e}")
+                traceback.print_exc()
+
+            try:
+                generate_variability_analysis(full_data)
+            except Exception as e:
+                print(f"Erro no Gráfico 2: {e}")
+                traceback.print_exc()
+
+            try:
+                # We need raw stats_df for this one, not aggregated career stats
+                generate_top_qbs_score(stats_df)
+            except Exception as e:
+                print(f"Erro no Gráfico 3: {e}")
+                traceback.print_exc()
+
             try:
                 generate_draft_success_rate(full_data)
             except Exception as e:
