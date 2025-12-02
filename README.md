@@ -4,22 +4,25 @@ Análises de Business Intelligence sobre o Draft da NFL e performance de jogador
 
 ## 📊 Visualizações Disponíveis
 
-Este projeto gera 11 visualizações para análise física e de performance:
+Este projeto gera 14 visualizações para análise física e de performance:
 
-**Análises de Performance:**
-1. **Taxa de Sucesso por Rodada** (`1_draft_success_rate.png`) - Probabilidade de encontrar talentos por rodada
-2. **Evolução das Posições** (`2_position_evolution.png`) - Mudanças no peso médio ao longo de 20+ anos
-3. **Pipeline de Faculdades** (`3_college_pipeline.png`) - Top 20 universidades produtoras de talentos
-4. **Biotipo do Sucesso** (`4_macro_biotype.png`) - IMC vs Valor de Carreira por posição
-5. **Viés de Seleção** (`5_selection_bias.png`) - Altura vs Performance por rodada
+**Gráficos Obrigatórios (Business Questions):**
+1. **Distribuição Física** (`1_biotype_scatter.png`) - Scatter Plot de Peso vs Altura por grupo de posição.
+2. **Variabilidade Física** (`2_variability_analysis.png`) - Desvio padrão de altura e peso por grupo.
+3. **Top QBs** (`3_top_qbs_score.png`) - Top 15 QBs por média de pontuação do time.
 
-**Análises Físicas:**
-6. **Distribuição de Altura** (`6_height_violin.png`) - Violin plot de altura por posição
-7. **Distribuição de Peso** (`7_weight_violin.png`) - Violin plot de peso por posição
-8. **BMI Ideal** (`8_bmi_ideal_ranges.png`) - Faixas de BMI para estrelas por posição
-9. **Scatter Matrix** (`9_scatter_matrix.png`) - Correlações entre altura, peso e performance
-10. **Outliers Físicos** (`10_physical_outliers.png`) - Top 20 jogadores fora do padrão que tiveram sucesso
-11. **Estrelas vs Busts** (`11_stars_vs_busts.png`) - Comparação de perfis físicos
+**Análises Complementares:**
+4. **Taxa de Sucesso por Rodada** (`4_draft_success_rate.png`) - Probabilidade de encontrar talentos por rodada.
+5. **Evolução das Posições** (`5_position_evolution.png`) - Mudanças no peso médio ao longo de 20+ anos.
+6. **Pipeline de Faculdades** (`6_college_pipeline.png`) - Top 20 universidades produtoras de talentos.
+7. **Biotipo do Sucesso** (`7_macro_biotype.png`) - IMC vs Valor de Carreira por posição.
+8. **Viés de Seleção** (`8_selection_bias.png`) - Altura vs Performance por rodada.
+9. **Distribuição de Altura** (`9_height_violin.png`) - Violin plot de altura por posição.
+10. **Distribuição de Peso** (`10_weight_violin.png`) - Violin plot de peso por posição.
+11. **BMI Ideal** (`11_bmi_ideal_ranges.png`) - Faixas de BMI para estrelas por posição.
+12. **Scatter Matrix** (`12_scatter_matrix.png`) - Correlações entre altura, peso e performance.
+13. **Outliers Físicos** (`13_physical_outliers.png`) - Top 20 jogadores fora do padrão que tiveram sucesso.
+14. **Estrelas vs Busts** (`14_stars_vs_busts.png`) - Comparação de perfis físicos.
 
 ## 🚀 Como Usar
 
