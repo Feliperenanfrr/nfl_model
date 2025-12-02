@@ -312,8 +312,8 @@ def generate_macro_biotype_scatter(df):
         facet_col_wrap=4,
         trendline='ols',
         hover_name='clean_name',
-        title='Biotipo do Sucesso: BMI vs Valor de Carreira (w_av)',
-        labels={'bmi': 'BMI (Índice de Massa Corporal)', 'w_av': 'Weighted Approximate Value (Carreira)'}
+        title='Biotipo do Sucesso: IMC vs Valor de Carreira (w_av)',
+        labels={'bmi': 'IMC (Índice de Massa Corporal)', 'w_av': 'Weighted Approximate Value (Carreira)'}
     )
     
     fig.update_layout(height=800, width=1200, template='plotly_white')
@@ -457,8 +457,8 @@ def generate_bmi_ideal_ranges(df):
         ))
     
     fig.update_layout(
-        title='BMI Ideal por Posição (Baseado em Estrelas)',
-        yaxis_title='BMI',
+        title='IMC Ideal por Posição (Baseado em Estrelas)',
+        yaxis_title='IMC',
         xaxis_title='Posição',
         template='plotly_white',
         height=600
@@ -581,9 +581,9 @@ def generate_stars_vs_busts(df):
     
     # BMI comparison
     sns.violinplot(data=comparison_df, x='category', y='bmi', ax=axes[0], palette=['#2ecc71', '#e74c3c'])
-    axes[0].set_title('Comparação de BMI', fontsize=14, fontweight='bold')
+    axes[0].set_title('Comparação de IMC', fontsize=14, fontweight='bold')
     axes[0].set_xlabel('')
-    axes[0].set_ylabel('BMI')
+    axes[0].set_ylabel('IMC')
     
     # Weight comparison
     sns.violinplot(data=comparison_df, x='category', y='weight_kg', ax=axes[1], palette=['#2ecc71', '#e74c3c'])
