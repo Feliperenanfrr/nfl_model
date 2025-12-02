@@ -24,6 +24,19 @@ Este projeto gera 14 visualizações para análise física e de performance:
 13. **Outliers Físicos** (`13_physical_outliers.png`) - Top 20 jogadores fora do padrão que tiveram sucesso.
 14. **Estrelas vs Busts** (`14_stars_vs_busts.png`) - Comparação de perfis físicos.
 
+## 🧩 Metodologia de Agrupamento
+
+Para facilitar a análise e identificar padrões macro, as posições foram agrupadas nas seguintes categorias:
+
+| Grupo | Posições Incluídas | Descrição |
+|-------|--------------------|-----------|
+| **OL** | T, LT, RT, G, LG, RG, C | Linha Ofensiva |
+| **DL** | DE, DT, NT | Linha Defensiva |
+| **LB** | ILB, OLB, MLB | Linebackers |
+| **DB** | CB, S, SS, FS | Defensive Backs |
+| **ST** | K, P, LS | Special Teams |
+| **QB, RB, WR, TE** | Mantidas individuais | Posições de Skill |
+
 ## 🚀 Como Usar
 
 ### Pré-requisitos
