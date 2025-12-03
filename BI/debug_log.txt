@@ -1,0 +1,4 @@
+Carregando dados...
+Dados mesclados: 1382 jogadores
+Dataset exportado para BI/data/nfl_bi_processed.csv
+Análise completa! Gráficos salvos em BI/charts/

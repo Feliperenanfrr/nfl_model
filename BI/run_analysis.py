@@ -852,6 +852,13 @@ def main():
             
             log.write(f"Dados mesclados: {len(full_data)} jogadores\n")
             print(f"Dados mesclados: {len(full_data)} jogadores")
+
+            # Export processed data for Power BI
+            output_file = 'BI/data/nfl_bi_processed.csv'
+            print(f"  Exportando dataset processado para {output_file}...")
+            full_data.to_csv(output_file, index=False)
+            log.write(f"Dataset exportado para {output_file}\n")
+            print("  Dataset exportado com sucesso.")
             
             # Generate Charts
             try:
